@@ -161,9 +161,56 @@ class DatabaseManager:
             )
         """)
 
+        # --- Phase 1 tables ----------------------------------------------------
+
+        # Users + RBAC. The `role` column is the minimum role required for
+        # protected endpoints. Default is 'cashier' for backwards compatibility.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'cashier',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Kitchen tickets. One row per order; status mirrors the underlying
+        # order so the kitchen display can poll this table independently.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS kitchen_tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL,
+                station TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+            )
+        """)
+
+        # Phase 1 lightweight migrations. We avoid Alembic for now and just
+        # ALTER in place when we discover a column is missing. This block is
+        # idempotent: every ALTER is guarded by a PRAGMA table_info check.
+        self._ensure_column(cursor, "inventory_transactions", "reason", "TEXT")
+        self._ensure_column(cursor, "inventory_transactions", "user_id", "TEXT")
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
+
+    @staticmethod
+    def _ensure_column(cursor, table: str, column: str, definition: str) -> None:
+        """Idempotent ALTER TABLE ADD COLUMN.
+
+        SQLite has no `ADD COLUMN IF NOT EXISTS`, so we read the schema and
+        only add the column when it is genuinely missing.
+        """
+        cursor.execute(f"PRAGMA table_info({table})")
+        cols = {row[1] for row in cursor.fetchall()}
+        if column not in cols:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def get_connection(self):
         """Get database connection with row factory"""
@@ -630,13 +677,26 @@ class DatabaseManager:
                     subtotal,
                     tax,
                     float(tax_rate),
-                    "pending",
+                    "submitted",
                     order_data.get("payment_method"),
                     order_data.get("customer_id"),
                     order_data.get("cashier_id"),
                     idempotency_key,
                 ),
             )
+
+            # Auto-create a kitchen ticket at submitted time. Phase 1 does
+            # NOT block on this; if it ever fails, the order still stands.
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO kitchen_tickets (order_id, status)
+                    VALUES (?, 'submitted')
+                """,
+                    (order_id,),
+                )
+            except Exception as _e:  # pragma: no cover (defensive)
+                logger.warning("kitchen_ticket create failed for %s: %s", order_id, _e)
 
             for item in line_items:
                 cursor.execute(
@@ -990,3 +1050,471 @@ class DatabaseManager:
         results = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return results
+
+    # -----------------------------------------------------------------------
+    # Phase 1: order state machine, kitchen tickets, waste, stock counts
+    # -----------------------------------------------------------------------
+
+    def create_kitchen_ticket(self, order_id: str, station: str | None = None) -> int:
+        """Idempotent kitchen ticket creation. Returns the ticket id."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT id, status FROM kitchen_tickets WHERE order_id = ?",
+                (order_id,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return int(row["id"])
+            cursor.execute(
+                """
+                INSERT INTO kitchen_tickets (order_id, status, station)
+                VALUES (?, 'submitted', ?)
+            """,
+                (order_id, station),
+            )
+            ticket_id = int(cursor.lastrowid or 0)
+            conn.commit()
+            return ticket_id
+        finally:
+            conn.close()
+
+    def update_kitchen_ticket(self, order_id: str, status: str) -> None:
+        """Mirror the order status on the kitchen ticket."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE kitchen_tickets
+                SET status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE order_id = ?
+            """,
+                (status, order_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_kitchen_tickets(self, statuses: list[str] | None = None) -> list[dict[str, Any]]:
+        """Return kitchen tickets (optionally filtered by status) with items."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            query = """
+                SELECT kt.*, oi.dish_id, oi.quantity, oi.price, oi.notes,
+                       d.name AS dish_name, d.category
+                FROM kitchen_tickets kt
+                JOIN orders o ON kt.order_id = o.id
+                JOIN order_items oi ON oi.order_id = o.id
+                JOIN dishes d ON d.id = oi.dish_id
+            """
+            params: list[Any] = []
+            if statuses:
+                placeholders = ",".join("?" for _ in statuses)
+                query += f" WHERE kt.status IN ({placeholders})"
+                params.extend(statuses)
+            query += " ORDER BY kt.created_at ASC"
+            cursor.execute(query, params)
+            rows = [dict(r) for r in cursor.fetchall()]
+
+            # Group items per ticket
+            tickets: dict[int, dict[str, Any]] = {}
+            for row in rows:
+                tid = int(row["id"])
+                if tid not in tickets:
+                    tickets[tid] = {
+                        "id": tid,
+                        "order_id": row["order_id"],
+                        "status": row["status"],
+                        "station": row.get("station"),
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"],
+                        "items": [],
+                    }
+                tickets[tid]["items"].append(
+                    {
+                        "dish_id": row["dish_id"],
+                        "quantity": row["quantity"],
+                        "price": row["price"],
+                        "notes": row.get("notes"),
+                        "dish_name": row.get("dish_name"),
+                        "category": row.get("category"),
+                    }
+                )
+            return list(tickets.values())
+        finally:
+            conn.close()
+
+    def transition_order_status(
+        self,
+        order_id: str,
+        new_status: str,
+        *,
+        reverse_on_cancel: str = "always",
+        reversal_user: str | None = None,
+    ) -> dict[str, Any]:
+        """Move an order to a new status, enforcing the lifecycle rules.
+
+        Cancellation behaviour:
+          * 'always'        — reversal always runs.
+          * 'preparing_only' — reversal only runs if the cancelled order
+                              had not yet reached PREPARING (i.e. raw stock
+                              was reserved but not yet consumed in the
+                              kitchen).  Phase 1 keeps the policy simple:
+                              if status in {draft, submitted, accepted},
+                              reverse the consumption.
+          * 'never'         — no reversal; the consumption stays as waste.
+
+        Returns the updated order dict (the same shape as get_order_by_id).
+        Raises ValueError on illegal transitions, missing orders, or
+        insufficient stock when reversal would push a quantity negative.
+        """
+        from models import is_valid_transition  # local import to avoid cycle
+
+        order = self.get_order_by_id(order_id)
+        if not order:
+            raise ValueError(f"Order {order_id} not found")
+
+        current = order["status"]
+        if not is_valid_transition(current, new_status):
+            raise ValueError(
+                f"Illegal transition: {current} -> {new_status}",
+            )
+
+        if current == new_status:
+            # Idempotent re-assert.
+            return order
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE orders SET status = ? WHERE id = ?",
+                (new_status, order_id),
+            )
+
+            if new_status == "cancelled":
+                # Decide whether to reverse inventory.
+                should_reverse = reverse_on_cancel == "always" or (
+                    reverse_on_cancel == "preparing_only"
+                    and current in {"draft", "submitted", "accepted"}
+                )
+                if should_reverse:
+                    self._reverse_inventory_for_order(cursor, order_id, user_id=reversal_user)
+
+            cursor.execute(
+                "UPDATE kitchen_tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ?",
+                (new_status, order_id),
+            )
+            conn.commit()
+            return self.get_order_by_id(order_id) or order
+        finally:
+            conn.close()
+
+    def _reverse_inventory_for_order(
+        self, cursor, order_id: str, user_id: str | None = None
+    ) -> None:
+        """Reverse the consumption side of the inventory ledger.
+
+        For each line item, find the consumption row(s) and write a
+        matching POSITIVE adjustment. Refuses to push stock negative if
+        some has already been consumed by a later order.
+        """
+        cursor.execute(
+            """
+            SELECT oi.dish_id, oi.quantity
+            FROM order_items oi
+            WHERE oi.order_id = ?
+        """,
+            (order_id,),
+        )
+        lines = [dict(r) for r in cursor.fetchall()]
+
+        for line in lines:
+            cursor.execute(
+                """
+                SELECT ingredient_id, quantity
+                FROM dish_ingredients
+                WHERE dish_id = ?
+            """,
+                (line["dish_id"],),
+            )
+            for ing in cursor.fetchall():
+                to_restore = float(ing["quantity"]) * int(line["quantity"])
+                cursor.execute(
+                    """
+                    SELECT quantity_today FROM ingredients WHERE id = ?
+                """,
+                    (ing["ingredient_id"],),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    continue
+                if float(row["quantity_today"]) + to_restore < 0:
+                    raise ValueError(
+                        f"Cannot reverse: ingredient {ing['ingredient_id']} would go negative",
+                    )
+                cursor.execute(
+                    """
+                    UPDATE ingredients
+                    SET quantity_today = quantity_today + ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """,
+                    (to_restore, ing["ingredient_id"]),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO inventory_transactions
+                      (ingredient_id, transaction_type, quantity_change,
+                       reference_id, notes, user_id)
+                    VALUES (?, 'adjustment', ?, ?, ?, ?)
+                """,
+                    (
+                        ing["ingredient_id"],
+                        to_restore,
+                        order_id,
+                        f"Reversal of order {order_id}",
+                        user_id,
+                    ),
+                )
+
+    # -- Inventory: waste + stock counts + variance ---------------------------
+
+    def record_waste(
+        self,
+        ingredient_id: str,
+        quantity: float,
+        reason: str,
+        notes: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Write a waste entry and reduce stock. Quantity is positive."""
+        if quantity <= 0:
+            raise ValueError("Waste quantity must be positive")
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT quantity_today FROM ingredients WHERE id = ?",
+                (ingredient_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError(f"Ingredient {ingredient_id} not found")
+            current = float(row["quantity_today"])
+            new_qty = current - quantity
+            if new_qty < 0:
+                raise ValueError(
+                    f"Waste would push {ingredient_id} negative "
+                    f"(have {current}, writing {quantity})",
+                )
+            cursor.execute(
+                """
+                UPDATE ingredients SET quantity_today = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """,
+                (new_qty, ingredient_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO inventory_transactions
+                  (ingredient_id, transaction_type, quantity_change, notes, reason, user_id)
+                VALUES (?, 'waste', ?, ?, ?, ?)
+            """,
+                (ingredient_id, -float(quantity), notes, reason, user_id),
+            )
+            conn.commit()
+            return self.get_ingredient_by_id(ingredient_id) or {}
+        finally:
+            conn.close()
+
+    def record_stock_count(
+        self,
+        ingredient_id: str,
+        physical_quantity: float,
+        notes: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Record a physical stock count and adjust to that value.
+
+        Writes a 'physical_count' transaction with the signed delta
+        between expected and physical quantities. The 'expected' value is
+        the current `quantity_today` BEFORE the adjustment, so the
+        ledger can reconstruct the variance.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT quantity_today FROM ingredients WHERE id = ?",
+                (ingredient_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError(f"Ingredient {ingredient_id} not found")
+            expected = float(row["quantity_today"])
+            delta = float(physical_quantity) - expected
+            if delta == 0:
+                # No-op — still write a transaction so the count is auditable.
+                cursor.execute(
+                    """
+                    INSERT INTO inventory_transactions
+                      (ingredient_id, transaction_type, quantity_change, notes, reason, user_id)
+                    VALUES (?, 'physical_count', 0, ?, 'count_match', ?)
+                """,
+                    (ingredient_id, notes, user_id),
+                )
+                conn.commit()
+                return self.get_ingredient_by_id(ingredient_id) or {}
+            cursor.execute(
+                """
+                UPDATE ingredients SET quantity_today = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """,
+                (float(physical_quantity), ingredient_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO inventory_transactions
+                  (ingredient_id, transaction_type, quantity_change, notes, reason, user_id)
+                VALUES (?, 'physical_count', ?, ?, ?, ?)
+            """,
+                (
+                    ingredient_id,
+                    delta,
+                    notes or "Stock count",
+                    "variance" if abs(delta) > 0 else "count_match",
+                    user_id,
+                ),
+            )
+            conn.commit()
+            return self.get_ingredient_by_id(ingredient_id) or {}
+        finally:
+            conn.close()
+
+    def get_variance_report(self, from_date: str, to_date: str) -> list[dict[str, Any]]:
+        """Theoretical vs actual usage for the given date range.
+
+        For each ingredient:
+          * consumption  = SUM(usage transactions in range)
+          * waste        = SUM(waste transactions in range)
+          * expected     = opening_stock - consumption - waste
+          * physical     = last physical_count in (or before) the range,
+                           or None if never counted
+          * variance     = physical - expected if physical exists
+          * cost_impact  = variance * cost_per_unit (cost of unexplained
+                           variance is what management cares about)
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, name, cost_per_unit FROM ingredients ORDER BY name
+            """
+            )
+            ingredients = [dict(r) for r in cursor.fetchall()]
+            report: list[dict[str, Any]] = []
+            for ing in ingredients:
+                iid = ing["id"]
+                cursor.execute(
+                    """
+                    SELECT
+                      COALESCE(SUM(CASE WHEN transaction_type IN ('usage', 'consumption')
+                                   THEN -quantity_change ELSE 0 END), 0) AS consumption,
+                      COALESCE(SUM(CASE WHEN transaction_type = 'waste'
+                                   THEN -quantity_change ELSE 0 END), 0) AS waste,
+                      COALESCE(SUM(CASE WHEN transaction_type = 'physical_count'
+                                   THEN quantity_change ELSE 0 END), 0) AS variance_delta
+                    FROM inventory_transactions
+                    WHERE ingredient_id = ?
+                      AND DATE(timestamp) BETWEEN ? AND ?
+                """,
+                    (iid, from_date, to_date),
+                )
+                row = cursor.fetchone()
+                consumption = float(row["consumption"] or 0)
+                waste = float(row["waste"] or 0)
+                variance_delta = float(row["variance_delta"] or 0)
+
+                # Last physical_count at or before to_date.
+                cursor.execute(
+                    """
+                    SELECT quantity_change FROM inventory_transactions
+                    WHERE ingredient_id = ? AND transaction_type = 'physical_count'
+                      AND DATE(timestamp) <= ?
+                    ORDER BY timestamp DESC LIMIT 1
+                """,
+                    (iid, to_date),
+                )
+                last_count = cursor.fetchone()
+                physical = None
+                variance = None
+                if last_count is not None:
+                    physical = float(last_count["quantity_change"])
+                    # physical is a delta, so report it as the cumulative
+                    # correction applied during the period.
+                    variance = physical
+
+                cost = float(ing["cost_per_unit"] or 0)
+                cost_impact = variance_delta * cost if variance_delta else 0.0
+
+                report.append(
+                    {
+                        "ingredient_id": iid,
+                        "ingredient_name": ing["name"],
+                        "expected_stock": None,  # not derivable without opening stock
+                        "physical_quantity": physical,
+                        "variance": variance,
+                        "waste_quantity": waste,
+                        "consumption_quantity": consumption,
+                        "cost_impact": round(cost_impact, 2),
+                    }
+                )
+            return report
+        finally:
+            conn.close()
+
+    # -- Users / RBAC --------------------------------------------------------
+
+    def create_user(self, username: str, display_name: str, role: str = "cashier") -> str:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            user_id = str(uuid.uuid4())
+            cursor.execute(
+                """
+                INSERT INTO users (id, username, display_name, role)
+                VALUES (?, ?, ?, ?)
+            """,
+                (user_id, username, display_name, role),
+            )
+            conn.commit()
+            return user_id
+        finally:
+            conn.close()
+
+    def get_user_by_username(self, username: str) -> dict[str, Any] | None:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT * FROM users WHERE username = ? AND is_active = 1",
+                (username,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def list_users(self) -> list[dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM users WHERE is_active = 1 ORDER BY display_name")
+            return [dict(r) for r in cursor.fetchall()]
+        finally:
+            conn.close()

@@ -16,15 +16,76 @@ class ApiResponse(BaseModel, Generic[T]):
 
 
 class OrderStatus(str, Enum):
-    PENDING = "pending"
+    """Order lifecycle.
+
+    Linear flow:
+        DRAFT -> SUBMITTED -> ACCEPTED -> PREPARING -> READY -> SERVED -> COMPLETED
+
+    Plus a terminal CANCELLED state reachable from DRAFT/SUBMITTED/ACCEPTED
+    depending on the restaurant's cancellation policy (see
+    `reverse_on_cancel` in core config).
+    """
+
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    ACCEPTED = "accepted"
+    PREPARING = "preparing"
+    READY = "ready"
+    SERVED = "served"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
 
+# Allowed forward transitions. Backwards moves (e.g. PREPARING -> ACCEPTED)
+# are not allowed by this map; an idempotent re-assert of the same state
+# is always permitted (see `is_valid_transition`).
+ORDER_STATUS_TRANSITIONS: dict[str, set[str]] = {
+    "draft": {"submitted", "cancelled"},
+    "submitted": {"accepted", "cancelled"},
+    "accepted": {"preparing", "cancelled"},
+    "preparing": {"ready", "cancelled"},
+    "ready": {"served"},
+    "served": {"completed"},
+    "completed": set(),
+    "cancelled": set(),
+}
+
+
+def is_valid_transition(from_status: str, to_status: str) -> bool:
+    """Return True if `from_status -> to_status` is a legal lifecycle move."""
+    if from_status == to_status:
+        return True  # idempotent re-asserts are fine
+    return to_status in ORDER_STATUS_TRANSITIONS.get(from_status, set())
+
+
 class TransactionType(str, Enum):
-    USAGE = "usage"
-    RESTOCK = "restock"
+    """Inventory ledger transaction kinds."""
+
+    OPENING = "opening"
+    PURCHASE = "purchase"
+    TRANSFER_IN = "transfer_in"
+    TRANSFER_OUT = "transfer_out"
+    CONSUMPTION = "consumption"  # alias for the legacy 'usage' value
+    USAGE = "usage"  # kept for backwards compatibility with the existing ledger
+    WASTE = "waste"
     ADJUSTMENT = "adjustment"
+    PHYSICAL_COUNT = "physical_count"
+
+
+class WasteReason(str, Enum):
+    SPOILAGE = "spoilage"
+    STAFF_MEAL = "staff_meal"
+    CUSTOMER_COMPLAINT = "customer_complaint"
+    PREP_ERROR = "prep_error"
+    OTHER = "other"
+
+
+class UserRole(str, Enum):
+    OWNER = "owner"
+    MANAGER = "manager"
+    CASHIER = "cashier"
+    KITCHEN = "kitchen"
+    INVENTORY = "inventory"
 
 
 class TimePeriod(str, Enum):
@@ -152,6 +213,13 @@ class OrderResponse(OrderBase):
     status: OrderStatus
 
 
+class OrderStatusUpdate(BaseModel):
+    """PATCH /api/orders/{id}/status body."""
+
+    status: OrderStatus
+    notes: str | None = None
+
+
 # Analytics models
 class PeriodData(BaseModel):
     orders: int
@@ -187,6 +255,61 @@ class InventoryTransaction(BaseModel):
     reference_id: str | None = None
     notes: str | None = None
     timestamp: datetime
+
+
+class WasteCreate(BaseModel):
+    ingredient_id: str
+    quantity: float  # positive; the ledger records -quantity
+    reason: WasteReason = WasteReason.OTHER
+    notes: str | None = None
+
+
+class StockCountCreate(BaseModel):
+    ingredient_id: str
+    physical_quantity: float
+    notes: str | None = None
+
+
+class VarianceReportEntry(BaseModel):
+    ingredient_id: str
+    ingredient_name: str
+    expected_stock: float | None = None
+    physical_quantity: float | None = None
+    variance: float | None = None  # physical - expected (positive = overage)
+    waste_quantity: float
+    consumption_quantity: float
+    cost_impact: float
+
+
+class VarianceReport(BaseModel):
+    from_date: str
+    to_date: str
+    entries: list[VarianceReportEntry]
+    total_cost_impact: float
+
+
+class UserCreate(BaseModel):
+    username: str
+    display_name: str
+    role: UserRole = UserRole.CASHIER
+
+
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    display_name: str
+    role: UserRole
+    created_at: datetime
+
+
+class KitchenTicketResponse(BaseModel):
+    id: int
+    order_id: str
+    status: str  # mirrors the underlying order status for now
+    station: str | None = None
+    items: list[OrderItem]
+    created_at: datetime
+    updated_at: datetime
 
 
 # System models

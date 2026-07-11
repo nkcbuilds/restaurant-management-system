@@ -39,10 +39,18 @@ from models import (
     DishUpdate,
     IngredientCreate,
     IngredientResponse,
+    KitchenTicketResponse,
     OrderCreate,
     OrderResponse,
+    OrderStatusUpdate,
     QuantityUpdate,
     SalesData,
+    StockCountCreate,
+    UserCreate,
+    UserResponse,
+    VarianceReport,
+    VarianceReportEntry,
+    WasteCreate,
 )
 
 # ----------------------------------------------------------------------------
@@ -342,6 +350,154 @@ async def predictions_status():
             "models_trained": 0,  # populated by the worker; placeholder for Phase 0
         },
     }
+
+
+# ----------------------------------------------------------------------------
+# Phase 1: Order lifecycle, kitchen, inventory ledger, RBAC
+# ----------------------------------------------------------------------------
+
+ROLE_ORDER = ["cashier", "kitchen", "inventory", "manager", "owner"]
+
+
+def _require_role(header_role: str | None, minimum: str) -> str:
+    """Minimal role-based gate using the X-User-Role header.
+
+    This is dev-only auth — see PHASES.md 1.6 for the production story.
+    Returns the effective role (the header value, or the minimum if no
+    header was sent) so we can log it.
+    """
+    role = (header_role or minimum).lower()
+    if ROLE_ORDER.index(role) < ROLE_ORDER.index(minimum):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Requires role '{minimum}' or higher (got '{role}').",
+        )
+    return role
+
+
+@app.patch("/api/orders/{order_id}/status")
+async def update_order_status(
+    order_id: str,
+    body: OrderStatusUpdate,
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    """Move an order along the lifecycle.
+
+    Cancellation is allowed for `cashier` and above; everything else
+    needs at least `kitchen` because the kitchen drives PREPARING,
+    READY, SERVED, COMPLETED.
+    """
+    minimum = "cashier" if body.status == "cancelled" else "kitchen"
+    _require_role(x_user_role, minimum)
+    try:
+        updated = db.transition_order_status(order_id, body.status.value)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg) from e
+        if "Illegal transition" in msg:
+            raise HTTPException(status_code=409, detail=msg) from e
+        raise HTTPException(status_code=400, detail=msg) from e
+    return ApiResponse(success=True, data=updated)
+
+
+# ---- Kitchen -------------------------------------------------------------
+
+
+@app.get("/api/kitchen/tickets", response_model=ApiResponse[list[KitchenTicketResponse]])
+async def list_kitchen_tickets(
+    status: str | None = None,
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    """List kitchen tickets. Optional ?status=submitted|accepted|preparing|..."""
+    _require_role(x_user_role, "kitchen")
+    statuses = [status] if status else None
+    return ApiResponse(success=True, data=db.get_kitchen_tickets(statuses))
+
+
+# ---- Inventory: waste + stock counts + variance --------------------------
+
+
+@app.post("/api/inventory/waste", response_model=ApiResponse[dict])
+async def post_waste(
+    body: WasteCreate,
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    """Record wastage. Stock is reduced; the ledger records a negative
+    consumption-style entry with a reason tag."""
+    _require_role(x_user_role, "inventory")
+    try:
+        updated = db.record_waste(
+            body.ingredient_id,
+            body.quantity,
+            body.reason.value,
+            body.notes,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg) from e
+        raise HTTPException(status_code=400, detail=msg) from e
+    return ApiResponse(success=True, data=updated)
+
+
+@app.post("/api/inventory/count", response_model=ApiResponse[dict])
+async def post_stock_count(
+    body: StockCountCreate,
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    """Record a physical stock count and adjust to match."""
+    _require_role(x_user_role, "inventory")
+    try:
+        updated = db.record_stock_count(body.ingredient_id, body.physical_quantity, body.notes)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg) from e
+        raise HTTPException(status_code=400, detail=msg) from e
+    return ApiResponse(success=True, data=updated)
+
+
+@app.get("/api/inventory/variance", response_model=ApiResponse[VarianceReport])
+async def get_variance(
+    from_date: str,
+    to_date: str,
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    """Theoretical vs actual usage over a date range."""
+    _require_role(x_user_role, "manager")
+    rows = db.get_variance_report(from_date, to_date)
+    entries = [VarianceReportEntry(**row) for row in rows]
+    total_cost = sum(e.cost_impact for e in entries)
+    return ApiResponse(
+        success=True,
+        data=VarianceReport(
+            from_date=from_date,
+            to_date=to_date,
+            entries=entries,
+            total_cost_impact=round(total_cost, 2),
+        ),
+    )
+
+
+# ---- Users / RBAC --------------------------------------------------------
+
+
+@app.post("/api/users", response_model=ApiResponse[UserResponse], status_code=201)
+async def create_user(body: UserCreate, db: DatabaseManager = Depends(get_db)):
+    db.create_user(body.username, body.display_name, body.role.value)
+    user = db.get_user_by_username(body.username)
+    return ApiResponse(success=True, data=user)
+
+
+@app.get("/api/users", response_model=ApiResponse[list[UserResponse]])
+async def list_users(db: DatabaseManager = Depends(get_db)):
+    return ApiResponse(success=True, data=db.list_users())
 
 
 # ----------------------------------------------------------------------------

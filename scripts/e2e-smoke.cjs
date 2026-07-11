@@ -115,7 +115,7 @@ async function main() {
     }),
   })).data
   assert(order1.total === 12.5, `server-computed total is 12.5 (got ${order1.total})`)
-  assert(order1.status === "pending", "new order status is 'pending'")
+  assert(order1.status === "submitted", "new order status is 'submitted' (Phase 1 lifecycle)")
 
   // 5. Re-posting same key returns the same order.
   const order2 = (await http("/api/orders", {

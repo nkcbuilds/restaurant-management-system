@@ -53,7 +53,7 @@ def test_tax_computed_server_side(db):
     assert order["tax"] != 0.01
 
 
-def test_new_order_starts_pending_not_completed(db):
+def test_new_order_starts_submitted_not_completed(db):
     dish_id = _create_dish(db, price=5.00)
     order_id = db.create_order(
         {
@@ -64,7 +64,9 @@ def test_new_order_starts_pending_not_completed(db):
         tax_rate=0.0,
     )
     order = db.get_order_by_id(order_id)
-    assert order["status"] == "pending", "Phase 0 ships orders in 'pending' state"
+    assert order["status"] == "submitted", (
+        "Phase 1 ships orders in 'submitted' state (kitchen must accept next)"
+    )
 
 
 def test_unknown_dish_rejected(db):

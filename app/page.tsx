@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { useOrders, useIngredients } from "@/lib/queries"
+import { useOrders, useIngredients, useSystemHealth, useSyncStatus } from "@/lib/queries"
 import {
   DollarSign,
   ShoppingCart,
@@ -11,6 +11,8 @@ import {
   ArrowUpRight,
   AlertTriangle,
   CheckCircle,
+  XCircle,
+  Loader2,
 } from "lucide-react"
 
 function EmDash({ label }: { label: string }) {
@@ -183,7 +185,34 @@ export default function Dashboard() {
 }
 
 function SyncStatusBadge() {
-  // Phase 0 ships a minimal sync-status probe. The full sync UI lands
-  // with the Next.js /api/sync route in 0.6.
-  return <span className="text-xs text-muted-foreground">Live</span>
+  const { data: health, isLoading } = useSystemHealth()
+  const { data: sync } = useSyncStatus()
+
+  if (isLoading) {
+    return (
+      <span className="text-xs text-muted-foreground flex items-center gap-1">
+        <Loader2 className="h-3 w-3 animate-spin" /> Checking…
+      </span>
+    )
+  }
+  if (!health?.ok) {
+    return (
+      <span
+        className="text-xs text-destructive flex items-center gap-1"
+        title={health?.detail ?? "Backend unreachable"}
+      >
+        <XCircle className="h-3 w-3" /> Offline
+      </span>
+    )
+  }
+  return (
+    <span className="text-xs text-muted-foreground flex items-center gap-1">
+      <CheckCircle className="h-3 w-3 text-green-500" /> Live
+      {sync?.last_success ? (
+        <span className="text-[10px] ml-1">
+          · last sync {new Date(sync.last_success).toLocaleTimeString()}
+        </span>
+      ) : null}
+    </span>
+  )
 }

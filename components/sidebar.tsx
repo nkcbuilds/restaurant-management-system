@@ -3,23 +3,28 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ChefHat, Home, Package, ShoppingCart } from "lucide-react"
-import { useIngredients } from "@/lib/queries"
+import { useIngredients, useKitchenTickets } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Inventory", href: "/inventory", icon: Package },
   { name: "Orders", href: "/orders", icon: ShoppingCart },
+  { name: "Kitchen", href: "/kitchen", icon: ChefHat },
 ]
 
-// Phase 0: only Dashboard, Inventory, Orders. Analytics / Reports /
-// Predictions / Kitchen / Settings are intentionally NOT in the nav
-// until they have real backend implementations.
+// Phase 1: Dashboard, Inventory, Orders, Kitchen all have backend
+// implementations and truthful data. Analytics / Reports / Predictions /
+// Settings remain unbuilt until their underlying data exists.
 
 export function Sidebar() {
   const pathname = usePathname()
   const { data: ingredients = [] } = useIngredients()
+  const { data: kitchenTickets = [] } = useKitchenTickets()
   const lowStockCount = ingredients.filter((i) => i.quantity_today <= i.min_threshold).length
+  const openKitchen = kitchenTickets.filter(
+    (t) => t.status !== "completed" && t.status !== "cancelled",
+  ).length
 
   return (
     <aside className="w-56 shrink-0 border-r border-sidebar-border bg-sidebar flex flex-col">
@@ -34,6 +39,12 @@ export function Sidebar() {
         {navigation.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href
+          const badge =
+            item.name === "Inventory" && lowStockCount > 0
+              ? lowStockCount
+              : item.name === "Kitchen" && openKitchen > 0
+                ? openKitchen
+                : null
           return (
             <Link
               key={item.name}
@@ -47,9 +58,9 @@ export function Sidebar() {
             >
               <Icon className="w-4 h-4" />
               <span>{item.name}</span>
-              {item.name === "Inventory" && lowStockCount > 0 ? (
+              {badge !== null ? (
                 <span className="ml-auto text-xs bg-destructive text-destructive-foreground rounded-full px-2 py-0.5">
-                  {lowStockCount}
+                  {badge}
                 </span>
               ) : null}
             </Link>
