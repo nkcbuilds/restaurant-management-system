@@ -196,6 +196,78 @@ class DatabaseManager:
         self._ensure_column(cursor, "inventory_transactions", "reason", "TEXT")
         self._ensure_column(cursor, "inventory_transactions", "user_id", "TEXT")
 
+        # --- Phase 3 tables -------------------------------------------------
+
+        # Suppliers + purchase orders. Phase 3 only models the minimum
+        # needed to demonstrate a real workflow; richer workflows
+        # (goods-received-notes, multi-currency, supplier returns) are
+        # explicitly Phase 4.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS suppliers (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                contact_name TEXT,
+                phone TEXT,
+                email TEXT,
+                address TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS purchase_orders (
+                id TEXT PRIMARY KEY,
+                supplier_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft',
+                notes TEXT,
+                total REAL NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS purchase_order_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                purchase_order_id TEXT NOT NULL,
+                ingredient_id TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                unit_cost REAL NOT NULL,
+                FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders (id) ON DELETE CASCADE,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredients (id)
+            )
+        """)
+
+        # Payments. One order can have many payments (split tender). The
+        # webhook handler is pluggable; for now we accept payments via
+        # POST /api/payments with an Idempotency-Key.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT NOT NULL,
+                amount REAL NOT NULL,
+                method TEXT NOT NULL,
+                reference TEXT,
+                idempotency_key TEXT UNIQUE,
+                status TEXT NOT NULL DEFAULT 'completed',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+            )
+        """)
+
+        # Audit log. Every state-changing action writes a row.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                actor TEXT NOT NULL,
+                action TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                payload TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -1518,3 +1590,316 @@ class DatabaseManager:
             return [dict(r) for r in cursor.fetchall()]
         finally:
             conn.close()
+
+    # -----------------------------------------------------------------------
+    # Phase 3: suppliers, purchase orders, payments, audit log
+    # -----------------------------------------------------------------------
+
+    def create_supplier(
+        self,
+        name: str,
+        *,
+        contact_name: str | None = None,
+        phone: str | None = None,
+        email: str | None = None,
+        address: str | None = None,
+    ) -> str:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            sid = str(uuid.uuid4())
+            cursor.execute(
+                """
+                INSERT INTO suppliers (id, name, contact_name, phone, email, address)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """,
+                (sid, name, contact_name, phone, email, address),
+            )
+            conn.commit()
+            return sid
+        finally:
+            conn.close()
+
+    def list_suppliers(self) -> list[dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY name")
+            return [dict(r) for r in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_supplier(self, supplier_id: str) -> dict[str, Any] | None:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT * FROM suppliers WHERE id = ? AND is_active = 1",
+                (supplier_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def create_purchase_order(
+        self,
+        supplier_id: str,
+        items: list[dict[str, Any]],
+        notes: str | None = None,
+    ) -> str:
+        """Insert a draft PO. `items` is a list of dicts with
+        ingredient_id, quantity, unit_cost."""
+        if not items:
+            raise ValueError("Purchase order must contain at least one item")
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            po_id = str(uuid.uuid4())
+            total = 0.0
+            for it in items:
+                total += float(it["quantity"]) * float(it["unit_cost"])
+            cursor.execute(
+                """
+                INSERT INTO purchase_orders (id, supplier_id, status, notes, total)
+                VALUES (?, ?, 'draft', ?, ?)
+            """,
+                (po_id, supplier_id, notes, round(total, 2)),
+            )
+            for it in items:
+                cursor.execute(
+                    """
+                    INSERT INTO purchase_order_items
+                      (purchase_order_id, ingredient_id, quantity, unit_cost)
+                    VALUES (?, ?, ?, ?)
+                """,
+                    (
+                        po_id,
+                        it["ingredient_id"],
+                        float(it["quantity"]),
+                        float(it["unit_cost"]),
+                    ),
+                )
+            conn.commit()
+            return po_id
+        finally:
+            conn.close()
+
+    def get_purchase_order(self, po_id: str) -> dict[str, Any] | None:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM purchase_orders WHERE id = ?", (po_id,))
+            po = cursor.fetchone()
+            if not po:
+                return None
+            po_dict = dict(po)
+            cursor.execute(
+                """
+                SELECT * FROM purchase_order_items WHERE purchase_order_id = ?
+                ORDER BY id
+            """,
+                (po_id,),
+            )
+            po_dict["items"] = [dict(r) for r in cursor.fetchall()]
+            return po_dict
+        finally:
+            conn.close()
+
+    def list_purchase_orders(
+        self, supplier_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if supplier_id:
+                cursor.execute(
+                    "SELECT * FROM purchase_orders WHERE supplier_id = ?"
+                    " ORDER BY created_at DESC",
+                    (supplier_id,),
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM purchase_orders ORDER BY created_at DESC"
+                )
+            return [dict(r) for r in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def receive_purchase_order(
+        self, po_id: str, actor: str | None = None
+    ) -> dict[str, Any]:
+        """Mark a PO as received and write `purchase` ledger entries.
+
+        Updates `ingredients.cost_per_unit` to a quantity-weighted
+        average of old and new cost; adds to `quantity_today`; writes a
+        `purchase` ledger row per ingredient.
+        """
+        po = self.get_purchase_order(po_id)
+        if not po:
+            raise ValueError(f"Purchase order {po_id} not found")
+        if po["status"] == "received":
+            return po  # idempotent
+        if po["status"] == "cancelled":
+            raise ValueError("Cannot receive a cancelled PO")
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE purchase_orders SET status='received',"
+                " updated_at=CURRENT_TIMESTAMP WHERE id = ?",
+                (po_id,),
+            )
+            for it in po["items"]:
+                qty = float(it["quantity"])
+                unit_cost = float(it["unit_cost"])
+                ing_id = it["ingredient_id"]
+                cursor.execute(
+                    "SELECT quantity_today, cost_per_unit FROM ingredients WHERE id = ?",
+                    (ing_id,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    continue
+                old_qty = float(row["quantity_today"])
+                old_cost = float(row["cost_per_unit"] or 0)
+                new_qty = old_qty + qty
+                new_cost = (
+                    (old_cost * old_qty + unit_cost * qty) / new_qty
+                    if new_qty > 0
+                    else unit_cost
+                )
+                cursor.execute(
+                    """
+                    UPDATE ingredients
+                    SET quantity_today = ?, cost_per_unit = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """,
+                    (new_qty, round(new_cost, 4), ing_id),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO inventory_transactions
+                      (ingredient_id, transaction_type, quantity_change,
+                       reference_id, notes, user_id)
+                    VALUES (?, 'purchase', ?, ?, 'purchase order received', ?)
+                """,
+                    (ing_id, qty, po_id, actor),
+                )
+            conn.commit()
+            return self.get_purchase_order(po_id) or po
+        finally:
+            conn.close()
+
+    def cancel_purchase_order(self, po_id: str) -> dict[str, Any] | None:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE purchase_orders SET status='cancelled',"
+                " updated_at=CURRENT_TIMESTAMP WHERE id = ? AND status NOT IN ('received', 'cancelled')",
+                (po_id,),
+            )
+            if cursor.rowcount == 0:
+                return None
+            conn.commit()
+            return self.get_purchase_order(po_id)
+        finally:
+            conn.close()
+
+    def create_payment(
+        self,
+        order_id: str,
+        amount: float,
+        method: str,
+        reference: str | None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Record a payment against an order. Idempotent by key."""
+        if amount <= 0:
+            raise ValueError("Payment amount must be positive")
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if idempotency_key:
+                cursor.execute(
+                    "SELECT * FROM payments WHERE idempotency_key = ?",
+                    (idempotency_key,),
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    return dict(existing)
+            cursor.execute(
+                """
+                INSERT INTO payments (order_id, amount, method, reference, idempotency_key)
+                VALUES (?, ?, ?, ?, ?)
+            """,
+                (order_id, amount, method, reference, idempotency_key),
+            )
+            pid = int(cursor.lastrowid or 0)
+            conn.commit()
+            cursor.execute("SELECT * FROM payments WHERE id = ?", (pid,))
+            return dict(cursor.fetchone() or {})
+        finally:
+            conn.close()
+
+    def list_payments_for_order(self, order_id: str) -> list[dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT * FROM payments WHERE order_id = ? ORDER BY created_at DESC",
+                (order_id,),
+            )
+            return [dict(r) for r in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def write_audit(
+        self,
+        actor: str,
+        action: str,
+        entity_type: str,
+        entity_id: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO audit_log (actor, action, entity_type, entity_id, payload)
+                VALUES (?, ?, ?, ?, ?)
+            """,
+                (
+                    actor,
+                    action,
+                    entity_type,
+                    entity_id,
+                    json.dumps(payload) if payload is not None else None,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def list_audit(self, limit: int = 100) -> list[dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)
+            )
+            rows = [dict(r) for r in cursor.fetchall()]
+            for r in rows:
+                if r.get("payload"):
+                    try:
+                        r["payload"] = json.loads(r["payload"])
+                    except json.JSONDecodeError:
+                        pass
+            return rows
+        finally:
+            conn.close()
+

@@ -34,18 +34,26 @@ from fastapi.responses import JSONResponse
 from ml_predictions import PredictionEngine
 from models import (
     ApiResponse,
+    AuditEntry,
     DishCreate,
     DishResponse,
     DishUpdate,
     IngredientCreate,
     IngredientResponse,
     KitchenTicketResponse,
+    OfflineOrder,
     OrderCreate,
     OrderResponse,
     OrderStatusUpdate,
+    PaymentCreate,
+    PaymentResponse,
+    PurchaseOrderCreate,
+    PurchaseOrderResponse,
     QuantityUpdate,
     SalesData,
     StockCountCreate,
+    SupplierCreate,
+    SupplierResponse,
     UserCreate,
     UserResponse,
     VarianceReport,
@@ -679,6 +687,271 @@ async def create_user(body: UserCreate, db: DatabaseManager = Depends(get_db)):
 @app.get("/api/users", response_model=ApiResponse[list[UserResponse]])
 async def list_users(db: DatabaseManager = Depends(get_db)):
     return ApiResponse(success=True, data=db.list_users())
+
+
+# ----------------------------------------------------------------------------
+# Phase 3: suppliers, purchase orders, payments, offline replay, audit
+# ----------------------------------------------------------------------------
+
+
+# ---- Suppliers + purchase orders --------------------------------------
+
+
+@app.post("/api/suppliers", response_model=ApiResponse[SupplierResponse], status_code=201)
+async def create_supplier(
+    body: SupplierCreate,
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    _require_role(x_user_role, "manager")
+    sid = db.create_supplier(
+        body.name,
+        contact_name=body.contact_name,
+        phone=body.phone,
+        email=body.email,
+        address=body.address,
+    )
+    db.write_audit(
+        actor=(x_user_role or "system"),
+        action="supplier.create",
+        entity_type="supplier",
+        entity_id=sid,
+        payload={"name": body.name},
+    )
+    return ApiResponse(success=True, data=db.get_supplier(sid))
+
+
+@app.get("/api/suppliers", response_model=ApiResponse[list[SupplierResponse]])
+async def list_suppliers(db: DatabaseManager = Depends(get_db)):
+    return ApiResponse(success=True, data=db.list_suppliers())
+
+
+@app.post(
+    "/api/purchase-orders",
+    response_model=ApiResponse[PurchaseOrderResponse],
+    status_code=201,
+)
+async def create_purchase_order(
+    body: PurchaseOrderCreate,
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    _require_role(x_user_role, "inventory")
+    if not db.get_supplier(body.supplier_id):
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    po_id = db.create_purchase_order(
+        body.supplier_id,
+        [it.model_dump() for it in body.items],
+        body.notes,
+    )
+    db.write_audit(
+        actor=(x_user_role or "system"),
+        action="purchase_order.create",
+        entity_type="purchase_order",
+        entity_id=po_id,
+        payload={"supplier_id": body.supplier_id, "n_items": len(body.items)},
+    )
+    return ApiResponse(success=True, data=db.get_purchase_order(po_id))
+
+
+@app.post(
+    "/api/purchase-orders/{po_id}/receive",
+    response_model=ApiResponse[PurchaseOrderResponse],
+)
+async def receive_purchase_order(
+    po_id: str,
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    _require_role(x_user_role, "inventory")
+    try:
+        po = db.receive_purchase_order(po_id, actor=x_user_role or "system")
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg) from e
+        raise HTTPException(status_code=400, detail=msg) from e
+    db.write_audit(
+        actor=(x_user_role or "system"),
+        action="purchase_order.receive",
+        entity_type="purchase_order",
+        entity_id=po_id,
+    )
+    return ApiResponse(success=True, data=po)
+
+
+@app.post(
+    "/api/purchase-orders/{po_id}/cancel",
+    response_model=ApiResponse[PurchaseOrderResponse],
+)
+async def cancel_purchase_order(
+    po_id: str,
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    _require_role(x_user_role, "manager")
+    result = db.cancel_purchase_order(po_id)
+    if result is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot cancel (already received, cancelled, or missing).",
+        )
+    db.write_audit(
+        actor=(x_user_role or "system"),
+        action="purchase_order.cancel",
+        entity_type="purchase_order",
+        entity_id=po_id,
+    )
+    return ApiResponse(success=True, data=result)
+
+
+@app.get("/api/purchase-orders", response_model=ApiResponse[list[PurchaseOrderResponse]])
+async def list_purchase_orders(
+    supplier_id: str | None = None,
+    db: DatabaseManager = Depends(get_db),
+):
+    return ApiResponse(success=True, data=db.list_purchase_orders(supplier_id))
+
+
+# ---- Payments ---------------------------------------------------------
+
+
+@app.post("/api/payments", response_model=ApiResponse[PaymentResponse], status_code=201)
+async def create_payment(
+    body: PaymentCreate,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    _require_role(x_user_role, "cashier")
+    if not db.get_order_by_id(body.order_id):
+        raise HTTPException(status_code=404, detail="Order not found")
+    try:
+        payment = db.create_payment(
+            body.order_id,
+            body.amount,
+            body.method,
+            body.reference,
+            idempotency_key=idempotency_key,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    db.write_audit(
+        actor=(x_user_role or "system"),
+        action="payment.create",
+        entity_type="payment",
+        entity_id=str(payment.get("id", "")),
+        payload={
+            "order_id": body.order_id,
+            "amount": body.amount,
+            "method": body.method,
+        },
+    )
+    return ApiResponse(success=True, data=payment)
+
+
+@app.get("/api/orders/{order_id}/payments", response_model=ApiResponse[list[PaymentResponse]])
+async def list_order_payments(order_id: str, db: DatabaseManager = Depends(get_db)):
+    if not db.get_order_by_id(order_id):
+        raise HTTPException(status_code=404, detail="Order not found")
+    return ApiResponse(success=True, data=db.list_payments_for_order(order_id))
+
+
+# ---- Offline POS replay (idempotent batch) ----------------------------
+
+
+@app.post("/api/orders/replay-batch", response_model=ApiResponse[dict])
+async def replay_offline_batch(
+    orders: list[OfflineOrder],
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    """Replay a batch of offline-captured orders.
+
+    Each entry carries its own idempotency_key (the client generates one
+    at capture time and persists it). The server deduplicates by key,
+    so a network blip that causes the client to retry the whole batch
+    cannot create duplicate orders.
+    """
+    _require_role(x_user_role, "cashier")
+    accepted: list[str] = []
+    duplicates: list[str] = []
+    failed: list[dict[str, str]] = []
+    for entry in orders:
+        existing = db.get_order_by_idempotency_key(entry.idempotency_key)
+        if existing:
+            duplicates.append(entry.idempotency_key)
+            continue
+        try:
+            oid = db.create_order(
+                {
+                    "items": [it.model_dump() for it in entry.items],
+                    "payment_method": entry.payment_method,
+                    "cashier_id": entry.cashier_id,
+                    "customer_id": entry.customer_id,
+                },
+                tax_rate=DEFAULT_TAX_RATE,
+                idempotency_key=entry.idempotency_key,
+            )
+            accepted.append(oid)
+        except ValueError as e:
+            failed.append({"idempotency_key": entry.idempotency_key, "detail": str(e)})
+    db.write_audit(
+        actor=(x_user_role or "system"),
+        action="orders.replay_batch",
+        entity_type="batch",
+        entity_id="offline",
+        payload={"accepted": len(accepted), "duplicates": len(duplicates), "failed": len(failed)},
+    )
+    return ApiResponse(
+        success=True,
+        data={"accepted": accepted, "duplicates": duplicates, "failed": failed},
+    )
+
+
+# ---- Audit log --------------------------------------------------------
+
+
+@app.get("/api/audit", response_model=ApiResponse[list[AuditEntry]])
+async def get_audit(
+    limit: int = 100,
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    db: DatabaseManager = Depends(get_db),
+):
+    _require_role(x_user_role, "owner")
+    return ApiResponse(success=True, data=db.list_audit(limit=limit))
+
+
+# ---- Prometheus-style metrics (Phase 3.9) ----------------------------
+
+
+@app.get("/metrics")
+async def prometheus_metrics(db: DatabaseManager = Depends(get_db)):
+    """Tiny /metrics endpoint — enough for a Phase 3 smoke test.
+
+    Real Prometheus exposition format has more required fields; this is
+    a deliberately minimal version that documents the counters we care
+    about. Operators can plug a richer exporter in Phase 4.
+    """
+    ingredients = db.get_ingredients()
+    orders = db.get_orders()
+    low_stock = sum(1 for i in ingredients if i["quantity_today"] <= i["min_threshold"])
+    lines = [
+        "# HELP restaurantos_ingredients_total Number of tracked ingredients",
+        "# TYPE restaurantos_ingredients_total gauge",
+        f"restaurantos_ingredients_total {len(ingredients)}",
+        "# HELP restaurantos_ingredients_low_stock Ingredients at or below threshold",
+        "# TYPE restaurantos_ingredients_low_stock gauge",
+        f"restaurantos_ingredients_low_stock {low_stock}",
+        "# HELP restaurantos_orders_total Total orders in DB",
+        "# TYPE restaurantos_orders_total counter",
+        f"restaurantos_orders_total {len(orders)}",
+    ]
+    return JSONResponse(
+        status_code=200,
+        content={"success": True, "data": "\n".join(lines) + "\n"},
+        media_type="text/plain",
+    )
 
 
 # ----------------------------------------------------------------------------

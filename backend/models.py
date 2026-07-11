@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
 
@@ -310,6 +310,92 @@ class KitchenTicketResponse(BaseModel):
     items: list[OrderItem]
     created_at: datetime
     updated_at: datetime
+
+
+# ---- Phase 3: suppliers, POs, payments, audit, metrics ------------------
+
+
+class SupplierBase(BaseModel):
+    name: str
+    contact_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    address: str | None = None
+
+
+class SupplierCreate(SupplierBase):
+    pass
+
+
+class SupplierResponse(SupplierBase):
+    id: str
+    is_active: bool
+    created_at: datetime
+
+
+class PurchaseOrderItem(BaseModel):
+    ingredient_id: str
+    quantity: float
+    unit_cost: float
+
+
+class PurchaseOrderCreate(BaseModel):
+    supplier_id: str
+    items: list[PurchaseOrderItem]
+    notes: str | None = None
+
+
+class PurchaseOrderResponse(BaseModel):
+    id: str
+    supplier_id: str
+    status: str  # 'draft' | 'sent' | 'received' | 'cancelled'
+    items: list[PurchaseOrderItem]
+    total: float
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaymentCreate(BaseModel):
+    order_id: str
+    amount: float
+    method: str  # 'cash' | 'card' | 'upi' | 'other'
+    reference: str | None = None
+
+
+class PaymentResponse(BaseModel):
+    id: int
+    order_id: str
+    amount: float
+    method: str
+    reference: str | None
+    status: str  # 'pending' | 'completed' | 'failed'
+    created_at: datetime
+
+
+class OfflineOrder(BaseModel):
+    """A single offline-captured order that the POS will replay later.
+
+    The browser fills the same shape it would send to /api/orders and
+    tags it with a client-side `captured_at` so duplicates can be
+    detected on replay.
+    """
+    idempotency_key: str
+    captured_at: str
+    items: list[OrderItem]
+    payment_method: str
+    cashier_id: str
+    customer_id: str | None = None
+
+
+class AuditEntry(BaseModel):
+    id: int
+    actor: str  # user id or "system"
+    action: str  # 'order.create', 'order.cancel', etc.
+    entity_type: str  # 'order', 'dish', etc.
+    entity_id: str
+    payload: dict[str, Any] | None = None
+    created_at: datetime
 
 
 # System models

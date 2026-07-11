@@ -5,15 +5,18 @@ import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ShoppingCart, Plus, Minus, Check, Clock } from "lucide-react"
+import { ShoppingCart, Plus, Minus, Check, Clock, WifiOff, RefreshCw } from "lucide-react"
 import { useDishes, useIngredients, useOrders, usePlaceOrder } from "@/lib/queries"
+import { useOfflineQueue } from "@/lib/queries/offline"
 import { useUIStore } from "@/lib/store"
+import { ApiError } from "@/lib/http"
 
 export default function OrdersPage() {
   const { data: dishes = [], isLoading: dishesLoading } = useDishes()
   const { data: ingredients = [], isLoading: ingredientsLoading } = useIngredients()
   const { data: orders = [], isLoading: ordersLoading } = useOrders()
   const placeOrder = usePlaceOrder()
+  const offline = useOfflineQueue()
 
   const cart = useUIStore((s) => s.cart)
   const addToCart = useUIStore((s) => s.addToCart)
@@ -50,18 +53,31 @@ export default function OrdersPage() {
     return sum + (dish ? dish.price * item.quantity : 0)
   }, 0)
 
-  const submit = () => {
+  const submit = async () => {
     if (cart.length === 0 || placeOrder.isPending) return
-    placeOrder.mutate(
-      {
+    try {
+      await placeOrder.mutateAsync({
         items: cart.map((c) => ({ dish_id: c.dish_id, quantity: c.quantity, price: 0 })),
         payment_method: "cash",
         cashier_id: "system",
-      },
-      {
-        onSuccess: () => clearCart(),
-      },
-    )
+      })
+      clearCart()
+      return
+    } catch (err) {
+      // Network / backend outage -> capture locally and let the outbox
+      // replay when the connection is back.
+      if (err instanceof ApiError || (err instanceof TypeError && navigator?.onLine === false)) {
+        offline.queue({
+          items: cart.map((c) => ({ dish_id: c.dish_id, quantity: c.quantity, price: 0 })),
+          payment_method: "cash",
+          cashier_id: "system",
+        })
+        clearCart()
+      } else {
+        // Real validation/insufficient-stock error — surface it.
+        throw err
+      }
+    }
   }
 
   if (dishesLoading || ingredientsLoading) {
@@ -94,6 +110,31 @@ export default function OrdersPage() {
         <h1 className="text-2xl font-bold">Orders</h1>
         <p className="text-sm text-muted-foreground">Take orders and update inventory</p>
       </div>
+
+      {offline.state.pending.length > 0 ? (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardContent className="py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <WifiOff className="h-4 w-4 text-amber-600" />
+              <span>
+                {offline.state.pending.length} order
+                {offline.state.pending.length === 1 ? "" : "s"} waiting to sync.
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void offline.flush()}
+              disabled={offline.state.isReplaying}
+            >
+              <RefreshCw
+                className={`h-3 w-3 mr-1 ${offline.state.isReplaying ? "animate-spin" : ""}`}
+              />
+              {offline.state.isReplaying ? "Syncing…" : "Sync now"}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">
