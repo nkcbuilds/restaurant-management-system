@@ -78,7 +78,8 @@ export interface BacktestReport {
 export function useBacktest(days = 90, horizon = 7) {
   return useQuery({
     queryKey: predictionKeys.backtest(days, horizon),
-    queryFn: () => http.get<BacktestReport>(`/api/predictions/backtest?days=${days}&horizon=${horizon}`),
+    queryFn: () =>
+      http.get<BacktestReport>(`/api/predictions/backtest?days=${days}&horizon=${horizon}`),
     refetchInterval: 5 * 60_000, // 5 min
   })
 }

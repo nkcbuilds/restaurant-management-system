@@ -28,8 +28,7 @@ export interface CreateIngredientInput {
 export function useCreateIngredient() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (input: CreateIngredientInput) =>
-      http.post<Ingredient>("/api/ingredients", input),
+    mutationFn: (input: CreateIngredientInput) => http.post<Ingredient>("/api/ingredients", input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ingredientKeys.all })
     },

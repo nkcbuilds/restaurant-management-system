@@ -83,7 +83,7 @@ export async function replayOfflineOrders(): Promise<{
   const consumed = new Set<string>([
     ...(data.accepted as string[]),
     ...(data.duplicates as string[]),
-    ...((data.failed as { idempotency_key: string }[]).map((f) => f.idempotency_key)),
+    ...(data.failed as { idempotency_key: string }[]).map((f) => f.idempotency_key),
   ])
   const remaining = batch.filter((o) => !consumed.has(o.idempotency_key))
   write(remaining)

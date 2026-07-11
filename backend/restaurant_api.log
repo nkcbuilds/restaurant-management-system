@@ -1,0 +1,42 @@
+2026-07-12 01:47:38,155 - __main__ - INFO - Starting Restaurant Management System API...
+2026-07-12 01:47:38,749 - main - INFO - Starting RestaurantOS API...
+2026-07-12 01:47:38,763 - database - INFO - Database initialized successfully
+2026-07-12 01:47:38,763 - main - INFO - Database initialised at restaurant.db
+2026-07-12 01:47:38,763 - main - INFO - Prediction engine initialised (idle — worker will drive jobs)
+2026-07-12 01:47:38,844 - watchfiles.main - INFO - 3 changes detected
+2026-07-12 01:47:42,172 - watchfiles.main - INFO - 3 changes detected
+2026-07-12 01:47:59,095 - watchfiles.main - INFO - 1 change detected
+2026-07-12 02:05:25,871 - __main__ - INFO - Starting Restaurant Management System API...
+2026-07-12 02:05:26,460 - main - INFO - Starting RestaurantOS API...
+2026-07-12 02:05:26,477 - database - INFO - Database initialized successfully
+2026-07-12 02:05:26,479 - main - INFO - Database initialised at restaurant.db
+2026-07-12 02:05:26,479 - main - INFO - Prediction engine initialised (idle — worker will drive jobs)
+2026-07-12 02:05:26,518 - watchfiles.main - INFO - 3 changes detected
+2026-07-12 02:05:30,812 - watchfiles.main - INFO - 3 changes detected
+2026-07-12 02:46:44,672 - __main__ - INFO - Starting Restaurant Management System API...
+2026-07-12 02:46:45,291 - main - INFO - Starting RestaurantOS API...
+2026-07-12 02:46:45,316 - database - INFO - Database initialized successfully
+2026-07-12 02:46:45,316 - main - INFO - Database initialised at restaurant.db
+2026-07-12 02:46:45,316 - main - INFO - Prediction engine initialised (idle — worker will drive jobs)
+2026-07-12 02:46:45,345 - watchfiles.main - INFO - 3 changes detected
+2026-07-12 02:46:49,681 - watchfiles.main - INFO - 3 changes detected
+2026-07-12 02:55:02,792 - __main__ - INFO - Starting Restaurant Management System API...
+2026-07-12 02:55:03,401 - main - INFO - Starting RestaurantOS API...
+2026-07-12 02:55:03,428 - database - INFO - Database initialized successfully
+2026-07-12 02:55:03,428 - main - INFO - Database initialised at restaurant.db
+2026-07-12 02:55:03,428 - main - INFO - Prediction engine initialised (idle — worker will drive jobs)
+2026-07-12 02:55:03,462 - watchfiles.main - INFO - 3 changes detected
+2026-07-12 02:56:03,542 - __main__ - INFO - Starting Restaurant Management System API...
+2026-07-12 02:56:04,145 - main - INFO - Starting RestaurantOS API...
+2026-07-12 02:56:04,172 - database - INFO - Database initialized successfully
+2026-07-12 02:56:04,172 - main - INFO - Database initialised at restaurant.db
+2026-07-12 02:56:04,172 - main - INFO - Prediction engine initialised (idle — worker will drive jobs)
+2026-07-12 02:56:04,204 - watchfiles.main - INFO - 3 changes detected
+2026-07-12 02:56:08,540 - watchfiles.main - INFO - 3 changes detected
+2026-07-12 02:57:09,216 - __main__ - INFO - Starting Restaurant Management System API...
+2026-07-12 02:57:09,823 - main - INFO - Starting RestaurantOS API...
+2026-07-12 02:57:09,849 - database - INFO - Database initialized successfully
+2026-07-12 02:57:09,849 - main - INFO - Database initialised at restaurant.db
+2026-07-12 02:57:09,849 - main - INFO - Prediction engine initialised (idle — worker will drive jobs)
+2026-07-12 02:57:09,881 - watchfiles.main - INFO - 3 changes detected
+2026-07-12 02:57:14,215 - watchfiles.main - INFO - 3 changes detected

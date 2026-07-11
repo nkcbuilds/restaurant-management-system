@@ -21,7 +21,7 @@ export class ApiError extends Error {
     const msg =
       typeof detail === "string"
         ? detail
-        : (detail as { message?: string })?.message ?? `HTTP ${status}`
+        : ((detail as { message?: string })?.message ?? `HTTP ${status}`)
     super(msg)
     this.name = "ApiError"
     this.status = status
@@ -89,8 +89,14 @@ export const http = {
       headers,
     }),
   put: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: "PUT", body: body === undefined ? undefined : JSON.stringify(body) }),
+    request<T>(path, {
+      method: "PUT",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
   patch: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: "PATCH", body: body === undefined ? undefined : JSON.stringify(body) }),
+    request<T>(path, {
+      method: "PATCH",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 }

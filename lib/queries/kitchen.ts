@@ -25,7 +25,9 @@ export const kitchenKeys = {
 }
 
 export function useKitchenTickets(status?: string) {
-  const path = status ? `/api/kitchen/tickets?status=${encodeURIComponent(status)}` : "/api/kitchen/tickets"
+  const path = status
+    ? `/api/kitchen/tickets?status=${encodeURIComponent(status)}`
+    : "/api/kitchen/tickets"
   return useQuery({
     queryKey: kitchenKeys.tickets(status),
     queryFn: () => http.get<KitchenTicket[]>(path),

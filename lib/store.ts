@@ -43,8 +43,7 @@ export const useUIStore = create<UIState>((set) => ({
       if (delta <= 0) return {}
       return { cart: [...s.cart, { dish_id: dishId, quantity: delta }] }
     }),
-  removeFromCart: (dishId) =>
-    set((s) => ({ cart: s.cart.filter((c) => c.dish_id !== dishId) })),
+  removeFromCart: (dishId) => set((s) => ({ cart: s.cart.filter((c) => c.dish_id !== dishId) })),
   clearCart: () => set({ cart: [] }),
   setCategoryFilter: (category) => set({ categoryFilter: category }),
 }))
