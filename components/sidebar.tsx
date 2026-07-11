@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ChefHat, Home, Package, ShoppingCart } from "lucide-react"
+import { ChefHat, Home, Package, ShoppingCart, Brain } from "lucide-react"
 import { useIngredients, useKitchenTickets } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 
@@ -11,10 +11,11 @@ const navigation = [
   { name: "Inventory", href: "/inventory", icon: Package },
   { name: "Orders", href: "/orders", icon: ShoppingCart },
   { name: "Kitchen", href: "/kitchen", icon: ChefHat },
+  { name: "Predictions", href: "/predictions", icon: Brain },
 ]
 
-// Phase 1: Dashboard, Inventory, Orders, Kitchen all have backend
-// implementations and truthful data. Analytics / Reports / Predictions /
+// Phase 2: Dashboard, Inventory, Orders, Kitchen, Predictions all have
+// backend implementations and truthful data. Analytics / Reports /
 // Settings remain unbuilt until their underlying data exists.
 
 export function Sidebar() {

@@ -27,6 +27,7 @@ select = [
 ignore = [
     "E501",   # line length — handled by formatter
     "B008",   # function calls in defaults — FastAPI uses them everywhere
+    "B905",   # zip() without strict= -- not worth churning existing code
 ]
 
 [lint.per-file-ignores]

@@ -109,9 +109,9 @@ def get_db() -> DatabaseManager:
     return db_manager
 
 
-def get_prediction_engine() -> PredictionEngine:
-    if prediction_engine is None:
-        raise HTTPException(status_code=503, detail="Prediction engine not available")
+def get_prediction_engine() -> PredictionEngine | None:
+    """Phase 2: the engine is best-effort. Returning None lets the
+    route decide whether to emit a degraded result instead of failing."""
     return prediction_engine
 
 
@@ -311,20 +311,36 @@ async def get_daily_sales(date: str, db: DatabaseManager = Depends(get_db)):
 # Predictions
 # ----------------------------------------------------------------------------
 @app.get("/api/predictions")
-async def get_predictions(date: str, db: DatabaseManager = Depends(get_db)):
-    """Return stored predictions for the given date.
+async def get_predictions(
+    date: str,
+    db: DatabaseManager = Depends(get_db),
+    engine: PredictionEngine | None = Depends(get_prediction_engine),
+):
+    """Return structured predictions for the given date.
 
-    The endpoint does NOT raise 503 when Prophet is unavailable — it
-    returns an empty list with `prophet_available: false` so the client
-    can render an honest "no predictions yet" state instead of crashing.
-    A separate `GET /api/predictions/status` reports engine capability.
+    Phase 2: each prediction includes the model that produced it, a
+    realistic range, data sufficiency, and a human-readable reason.
+    The endpoint does NOT raise 503 when Prophet is unavailable —
+    baselines always run.
     """
     try:
         from ml_predictions import _PROPHET_AVAILABLE  # noqa: WPS433
     except Exception:
         _PROPHET_AVAILABLE = False
 
-    rows = db.get_predictions(date)
+    if engine is None:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "data": [],
+                "prophet_available": False,
+                "count": 0,
+                "warning": "Prediction engine not initialised",
+            },
+        )
+
+    rows = engine.get_structured_predictions(date)
     return JSONResponse(
         status_code=200,
         content={
@@ -347,9 +363,174 @@ async def predictions_status():
         "success": True,
         "data": {
             "prophet_available": bool(_PROPHET_AVAILABLE),
-            "models_trained": 0,  # populated by the worker; placeholder for Phase 0
+            "models_trained": 3,  # the three baselines are always trained
         },
     }
+
+
+# ----------------------------------------------------------------------------
+# Phase 2: prep plans + purchase recommendations
+# ----------------------------------------------------------------------------
+
+
+@app.get("/api/prep-plan")
+async def get_prep_plan(
+    date: str,
+    db: DatabaseManager = Depends(get_db),
+    engine: PredictionEngine | None = Depends(get_prediction_engine),
+):
+    """Recommended prep quantities per dish for a given date.
+
+    Wraps the structured predictions and adds the dish's recipe
+    (ingredients needed) so the kitchen knows what to pull.
+    """
+    if engine is None:
+        return JSONResponse(
+            status_code=200,
+            content={"success": True, "data": [], "warning": "Prediction engine not initialised"},
+        )
+
+    preds = engine.get_structured_predictions(date)
+    dishes = {d["id"]: d for d in db.get_dishes()}
+    out = []
+    for p in preds:
+        dish = dishes.get(p["dish_id"])
+        if not dish:
+            continue
+        out.append(
+            {
+                "dish_id": p["dish_id"],
+                "dish_name": p["dish_name"],
+                "period": p["period"],
+                "predicted_demand": p["predicted_demand"],
+                "recommended_prep": p["recommended_prep"],
+                "low": p["low"],
+                "high": p["high"],
+                "model_used": p["model_used"],
+                "model_confidence": p["model_confidence"],
+                "data_sufficiency": p["data_sufficiency"],
+                "reason": p["reason"],
+                "ingredients_needed": [
+                    {
+                        "ingredient_id": ing["ingredient_id"],
+                        "quantity": ing["quantity"] * p["recommended_prep"],
+                        "unit": ing["unit"],
+                    }
+                    for ing in dish.get("ingredients", [])
+                ],
+            }
+        )
+    return JSONResponse(status_code=200, content={"success": True, "data": out})
+
+
+@app.get("/api/purchase-recommendations")
+async def get_purchase_recommendations(
+    date: str,
+    db: DatabaseManager = Depends(get_db),
+    engine: PredictionEngine | None = Depends(get_prediction_engine),
+):
+    """Sum expected consumption vs current stock; flag ingredients needing reorder."""
+    if engine is None:
+        return JSONResponse(
+            status_code=200,
+            content={"success": True, "data": [], "warning": "Prediction engine not initialised"},
+        )
+
+    preds = engine.get_structured_predictions(date)
+    dishes = {d["id"]: d for d in db.get_dishes()}
+    ingredients = {i["id"]: i for i in db.get_ingredients()}
+
+    # Aggregate expected consumption per ingredient.
+    needed: dict[str, float] = {}
+    for p in preds:
+        dish = dishes.get(p["dish_id"])
+        if not dish:
+            continue
+        for ing in dish.get("ingredients", []):
+            needed[ing["ingredient_id"]] = (
+                needed.get(ing["ingredient_id"], 0.0) + ing["quantity"] * p["recommended_prep"]
+            )
+
+    out = []
+    for ing_id, qty_needed in needed.items():
+        ing = ingredients.get(ing_id)
+        if not ing:
+            continue
+        on_hand = float(ing["quantity_today"])
+        shortage = max(0.0, qty_needed - on_hand)
+        out.append(
+            {
+                "ingredient_id": ing_id,
+                "ingredient_name": ing["name"],
+                "unit": ing["unit"],
+                "on_hand": on_hand,
+                "needed": round(qty_needed, 2),
+                "shortage": round(shortage, 2),
+                "needs_reorder": shortage > 0,
+                "cost_estimate": round(shortage * float(ing.get("cost_per_unit", 0.0) or 0.0), 2),
+            }
+        )
+    out.sort(key=lambda r: r["shortage"], reverse=True)
+    return JSONResponse(status_code=200, content={"success": True, "data": out})
+
+
+@app.get("/api/predictions/backtest")
+async def run_backtest(
+    days: int = 90,
+    horizon: int = 7,
+    db: DatabaseManager = Depends(get_db),
+):
+    """Walk forward through `days` of history, evaluating each baseline.
+
+    Returns per-(dish, period) winners and an overall per-model summary.
+    This is what gives the operator trust in the prediction numbers:
+    they can see which model is actually best per dish.
+    """
+    from datetime import date as _date
+    from datetime import timedelta
+
+    from backtest import backtest
+
+    raw = db.get_historical_order_data(days=days)
+    if not raw:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "data": {
+                    "from_date": "",
+                    "to_date": "",
+                    "by_dish_period": [],
+                    "overall": {},
+                    "warning": "No historical data yet — place orders first.",
+                },
+            },
+        )
+
+    rows: list[tuple[str, str, str, float]] = [
+        (r["dish_id"], r["period"], r["ds"], float(r["y"])) for r in raw
+    ]
+    end = _date.today()
+    start = end - timedelta(days=days)
+    report = backtest(
+        rows,
+        from_date=start.isoformat(),
+        to_date=end.isoformat(),
+        horizon_days=horizon,
+        min_train_size=4,
+    )
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "data": {
+                "from_date": report.from_date,
+                "to_date": report.to_date,
+                "by_dish_period": report.by_dish_period,
+                "overall": report.overall,
+            },
+        },
+    )
 
 
 # ----------------------------------------------------------------------------
