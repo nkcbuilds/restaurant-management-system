@@ -2,95 +2,60 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useRouter } from "next/navigation"
+import { ChefHat, Home, Package, ShoppingCart } from "lucide-react"
+import { useIngredients } from "@/lib/queries"
 import { cn } from "@/lib/utils"
-import { Badge } from "@/components/ui/badge"
-import { useAppStore } from "@/lib/store"
-import { Home, Package, ShoppingCart, BarChart3, Brain, ChefHat, FileText, Settings, ChevronRight } from "lucide-react"
-import { useEffect } from "react"
 
 const navigation = [
-  { name: "Home", href: "/", icon: Home },
+  { name: "Dashboard", href: "/", icon: Home },
   { name: "Inventory", href: "/inventory", icon: Package },
   { name: "Orders", href: "/orders", icon: ShoppingCart },
-  { name: "Analytics", href: "/analytics", icon: BarChart3 },
-  { name: "Predictions", href: "/predictions", icon: Brain },
-  { name: "Kitchen", href: "/kitchen", icon: ChefHat },
-  { name: "Reports", href: "/reports", icon: FileText },
-  { name: "Settings", href: "/settings", icon: Settings },
 ]
+
+// Phase 0: only Dashboard, Inventory, Orders. Analytics / Reports /
+// Predictions / Kitchen / Settings are intentionally NOT in the nav
+// until they have real backend implementations.
 
 export function Sidebar() {
   const pathname = usePathname()
-  const router = useRouter()
-  const { ingredients } = useAppStore()
-
-  const lowStockCount = ingredients.filter((ing) => ing.quantityToday <= ing.minThreshold).length
-
-  useEffect(() => {
-    const prefetchRoutes = () => {
-      navigation.forEach((item) => {
-        if (item.href !== pathname) {
-          router.prefetch(item.href)
-        }
-      })
-    }
-
-    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
-      const idleId = window.requestIdleCallback(prefetchRoutes)
-      return () => window.cancelIdleCallback(idleId)
-    }
-
-    const timeoutId = setTimeout(prefetchRoutes, 300)
-    return () => clearTimeout(timeoutId)
-  }, [pathname, router])
+  const { data: ingredients = [] } = useIngredients()
+  const lowStockCount = ingredients.filter((i) => i.quantity_today <= i.min_threshold).length
 
   return (
-    <div className="flex h-screen w-64 flex-col bg-sidebar border-r border-sidebar-border transition-colors">
-      {/* Logo */}
-      <div className="flex h-16 items-center px-6 border-b border-sidebar-border">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-sidebar-primary rounded-lg flex items-center justify-center">
-            <ChefHat className="w-5 h-5 text-sidebar-primary-foreground" />
-          </div>
-          <span className="text-xl font-bold text-sidebar-foreground">RestaurantOS</span>
+    <aside className="w-56 shrink-0 border-r border-sidebar-border bg-sidebar flex flex-col">
+      <div className="h-16 px-6 flex items-center gap-2 border-b border-sidebar-border">
+        <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
+          <ChefHat className="w-5 h-5 text-sidebar-primary-foreground" />
         </div>
+        <span className="font-semibold text-sidebar-foreground">RestaurantOS</span>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-4 py-8 space-y-2">
+      <nav className="flex-1 p-3 space-y-1">
         {navigation.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href
-
           return (
-            <Link key={item.name} href={item.href}>
-              <div
-                className={cn(
-                  "flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group",
-                  isActive
-                    ? "bg-sidebar-primary/15 text-sidebar-primary"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                )}
-              >
-                <div className="flex items-center gap-4">
-                  <Icon className="w-5 h-5" />
-                  <span>{item.name}</span>
-                </div>
-
-                {/* Notifications */}
-                {item.name === "Inventory" && lowStockCount > 0 && (
-                  <Badge variant="destructive" className="text-xs">
-                    {lowStockCount}
-                  </Badge>
-                )}
-
-                {isActive && <ChevronRight className="w-4 h-4" />}
-              </div>
+            <Link
+              key={item.name}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{item.name}</span>
+              {item.name === "Inventory" && lowStockCount > 0 ? (
+                <span className="ml-auto text-xs bg-destructive text-destructive-foreground rounded-full px-2 py-0.5">
+                  {lowStockCount}
+                </span>
+              ) : null}
             </Link>
           )
         })}
       </nav>
-    </div>
+    </aside>
   )
 }

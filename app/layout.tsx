@@ -1,40 +1,25 @@
-import type React from "react"
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
 import { Sidebar } from "@/components/sidebar"
-
-const inter = Inter({ subsets: ["latin"] })
+import { QueryProvider } from "@/lib/query-provider"
+import { DemoBanner } from "@/components/demo-banner"
 
 export const metadata: Metadata = {
-  title: "RestaurantOS - Complete Management System",
-  description: "AI-powered restaurant management with inventory, orders, and analytics",
-  generator: "v0.dev",
+  title: "RestaurantOS",
+  description: "Restaurant management with inventory intelligence",
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem={true}
-          disableTransitionOnChange={false}
-          storageKey="restaurant-theme"
-        >
+      <body>
+        <QueryProvider>
+          <DemoBanner />
           <div className="flex h-screen bg-background">
             <Sidebar />
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <main className="flex-1 overflow-y-auto bg-background">{children}</main>
-            </div>
+            <main className="flex-1 overflow-y-auto">{children}</main>
           </div>
-        </ThemeProvider>
+        </QueryProvider>
       </body>
     </html>
   )

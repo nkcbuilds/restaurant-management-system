@@ -1,0 +1,6 @@
+# Optional ML dependencies. Install on the worker process or whenever
+# the /api/predictions/* endpoints are exercised. The API still boots
+# without these, but the prediction engine reports 'prophet unavailable'.
+pandas==1.5.3
+numpy>=1.23.5,<2.0
+prophet==1.1.5

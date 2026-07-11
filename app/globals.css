@@ -2,90 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 24 95% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 24 95% 53%;
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 222 47% 11%;
+  --sidebar-primary: 24 95% 53%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 210 40% 96%;
+  --sidebar-accent-foreground: 222 47% 11%;
+  --sidebar-border: 214 32% 91%;
 }
 
-@layer base {
-  :root {
-    --background: 36 56% 97%;
-    --foreground: 22 24% 18%;
-    --card: 36 45% 99%;
-    --card-foreground: 22 24% 18%;
-    --popover: 36 45% 99%;
-    --popover-foreground: 22 24% 18%;
-    --primary: 23 78% 45%;
-    --primary-foreground: 48 100% 97%;
-    --secondary: 146 30% 92%;
-    --secondary-foreground: 160 35% 22%;
-    --muted: 34 28% 92%;
-    --muted-foreground: 24 14% 38%;
-    --accent: 169 42% 90%;
-    --accent-foreground: 173 55% 24%;
-    --destructive: 0 72% 50%;
-    --destructive-foreground: 48 100% 97%;
-    --border: 30 24% 84%;
-    --input: 30 24% 84%;
-    --ring: 23 78% 45%;
-    --chart-1: 23 78% 52%;
-    --chart-2: 171 48% 36%;
-    --chart-3: 37 90% 58%;
-    --chart-4: 198 55% 44%;
-    --chart-5: 355 66% 56%;
-    --radius: 0.5rem;
-    --sidebar-background: 34 58% 95%;
-    --sidebar-foreground: 22 24% 22%;
-    --sidebar-primary: 23 78% 45%;
-    --sidebar-primary-foreground: 48 100% 97%;
-    --sidebar-accent: 36 45% 90%;
-    --sidebar-accent-foreground: 23 55% 25%;
-    --sidebar-border: 30 24% 82%;
-    --sidebar-ring: 23 78% 45%;
-  }
-  .dark {
-    --background: 24 20% 11%;
-    --foreground: 40 30% 94%;
-    --card: 24 18% 14%;
-    --card-foreground: 40 30% 94%;
-    --popover: 24 18% 14%;
-    --popover-foreground: 40 30% 94%;
-    --primary: 26 82% 61%;
-    --primary-foreground: 24 30% 12%;
-    --secondary: 160 18% 22%;
-    --secondary-foreground: 158 22% 88%;
-    --muted: 24 14% 20%;
-    --muted-foreground: 34 15% 70%;
-    --accent: 162 24% 24%;
-    --accent-foreground: 154 35% 90%;
-    --destructive: 0 70% 45%;
-    --destructive-foreground: 40 30% 94%;
-    --border: 24 14% 28%;
-    --input: 24 14% 28%;
-    --ring: 26 82% 61%;
-    --chart-1: 26 82% 61%;
-    --chart-2: 167 52% 46%;
-    --chart-3: 41 92% 60%;
-    --chart-4: 201 67% 58%;
-    --chart-5: 352 73% 63%;
-    --sidebar-background: 24 18% 12%;
-    --sidebar-foreground: 36 30% 90%;
-    --sidebar-primary: 26 82% 61%;
-    --sidebar-primary-foreground: 24 30% 12%;
-    --sidebar-accent: 24 14% 20%;
-    --sidebar-accent-foreground: 36 30% 90%;
-    --sidebar-border: 24 14% 24%;
-    --sidebar-ring: 26 82% 61%;
-  }
+.dark {
+  --background: 222 47% 9%;
+  --foreground: 210 40% 98%;
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 24 95% 60%;
+  --primary-foreground: 222 47% 11%;
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 217 33% 17%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217 33% 20%;
+  --input: 217 33% 20%;
+  --ring: 24 95% 60%;
+  --sidebar-background: 222 47% 9%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-primary: 24 95% 60%;
+  --sidebar-primary-foreground: 222 47% 11%;
+  --sidebar-accent: 217 33% 17%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-border: 217 33% 20%;
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground antialiased;
-    background-image: radial-gradient(circle at 15% 10%, hsl(var(--accent) / 0.18), transparent 42%);
-  }
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
 }

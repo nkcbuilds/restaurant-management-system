@@ -1,296 +1,156 @@
-# Restaurant Management System
-
-A comprehensive restaurant management system with inventory tracking, order processing, analytics, and AI-powered predictions using Prophet by Meta.
-
-## SCREENSHOTS
-![WhatsApp Image 2025-06-04 at 20 12 11_cd3dffd6](https://github.com/user-attachments/assets/7053f384-821b-460e-a785-17d00f481f82)
-![WhatsApp Image 2025-06-04 at 20 13 27_eb45eadd](https://github.com/user-attachments/assets/3c93e0a2-332b-4809-a211-3f7549e61a0e)
-![WhatsApp Image 2025-06-04 at 20 13 47_ee4d7afc](https://github.com/user-attachments/assets/c201d48a-6b5a-4ecb-9a2a-fa07c944f4f5)
-![WhatsApp Image 2025-06-04 at 20 14 06_6abf0a42](https://github.com/user-attachments/assets/1c6f4617-469e-41f9-ba1e-bcaa8b2c3017)
-![WhatsApp Image 2025-06-04 at 20 14 27_e8283523](https://github.com/user-attachments/assets/8231cf9b-7086-414c-aee2-b33f021c0f27)
-
-
-## Features
-
-### Core Functionality
-- **Inventory Management**: Track ingredients, dishes, and stock levels with real-time low stock alerts
-- **Order Processing**: Interactive order portal with automatic ingredient deduction
-- **Analytics Dashboard**: 15-day sales analysis with time-based breakdowns
-- **AI Predictions**: Prophet-powered demand forecasting for optimal preparation planning
-- **Kitchen Dashboard**: Real-time preparation tasks and cooking management
-- **Modern UI**: Dark/light mode support with responsive design
-
-### Advanced Features
-- **Sub-Ingredients**: Track combined ingredient states with preparation methods
-- **Real-time Sync**: Automatic database synchronization
-- **ML Forecasting**: Meta's Prophet library for accurate demand prediction
-- **Time-based Analysis**: Morning, afternoon, and evening performance breakdown
-- **Detailed Reporting**: Comprehensive sales and performance reports
-- **Data Management**: Import/export capabilities with backup systems
-
-## Tech Stack
-
-### Frontend
-- **Next.js 14** with App Router
-- **React 18** with TypeScript
-- **Tailwind CSS** for styling
-- **shadcn/ui** components
-- **Zustand** for state management
-- **Recharts** for data visualization
-
-### Backend
-- **FastAPI** (Python)
-- **SQLite** database
-- **Prophet** for ML predictions
-- **Pandas** for data processing
-- **Pydantic** for data validation
-- **Uvicorn** ASGI server
-
-## Installation & Setup
-
-### Prerequisites
-- **Node.js** 18+ 
-- **Python** 3.8+
-- **npm** or **yarn**
-
-### Backend Setup
-
-1. **Navigate to backend directory**
-   \`\`\`bash
-   cd backend
-   \`\`\`
-
-2. **Run setup script**
-   \`\`\`bash
-   chmod +x setup.sh
-   ./setup.sh
-   \`\`\`
-
-   Or manually:
-   \`\`\`bash
-   # Create virtual environment
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-   # Install dependencies
-   pip install -r requirements.txt
-   \`\`\`
-
-3. **Start the backend server**
-   \`\`\`bash
-   # Using the start script
-   ./start.sh
-
-   # Or manually
-   source venv/bin/activate
-   python run.py
-   \`\`\`
-
-   The API will be available at `http://localhost:8000`
-
-### Frontend Setup
-
-1. **Install dependencies**
-   \`\`\`bash
-   npm install
-   # or
-   yarn install
-   \`\`\`
-
-2. **Start the development server**
-   \`\`\`bash
-   npm run dev
-   # or
-   yarn dev
-   \`\`\`
-
-   The application will be available at `http://localhost:3000`
-
-## Usage
-
-### Getting Started
-
-1. **Start both servers** (backend on :8000, frontend on :3000)
-2. **Access the dashboard** at `http://localhost:3000`
-3. **Add ingredients** in the Inventory section
-4. **Create dishes** with ingredient combinations and sub-ingredients
-5. **Process orders** in the Orders section
-6. **View analytics** and predictions in respective sections
-
-### Key Workflows
-
-#### Setting Up Inventory
-1. Go to **Inventory** → **Add Ingredient**
-2. Set quantities and minimum thresholds
-3. Create dishes and assign ingredients with sub-ingredient states
-4. Monitor low stock alerts
-
-#### Processing Orders
-1. Navigate to **Orders**
-2. Select dishes from the menu
-3. Add to cart and complete order
-4. System automatically deducts ingredients
-
-#### Viewing Analytics
-1. Check **Analytics** for historical data
-2. Use **Reports** for detailed analysis with calendar
-3. Review **Predictions** for AI-powered forecasts
-4. Monitor **Kitchen Dashboard** for preparation tasks
-
-#### System Settings
-1. Go to **Settings**
-2. Toggle **Dark Mode** under General
-3. Configure notifications and sync intervals
-4. Manage data import/export
-
-## API Endpoints
-
-### Dishes
-- `GET /api/dishes` - Get all dishes
-- `POST /api/dishes` - Create new dish
-- `PUT /api/dishes/{id}` - Update dish
-- `DELETE /api/dishes/{id}` - Delete dish
-
-### Ingredients
-- `GET /api/ingredients` - Get all ingredients
-- `POST /api/ingredients` - Create ingredient
-- `PUT /api/ingredients/{id}/quantity` - Update quantity
-
-### Orders
-- `GET /api/orders` - Get orders
-- `POST /api/orders` - Create order
-
-### Analytics
-- `GET /api/analytics/sales` - Get sales data
-- `GET /api/analytics/daily-sales` - Get daily breakdown
-
-### Predictions
-- `GET /api/predictions` - Get predictions
-- `POST /api/predictions/generate` - Generate new predictions
-
-### System
-- `POST /api/sync` - Manual sync
-- `GET /api/sync/status` - Sync status
-- `GET /health` - Health check
-
-## Database Schema
-
-The system uses SQLite with the following main tables:
-
-- **dishes** - Menu items with pricing and categories
-- **ingredients** - Inventory items with quantities
-- **dish_ingredients** - Relationship with sub-ingredient data (JSON)
-- **orders** - Customer orders
-- **order_items** - Order line items
-- **predictions** - ML-generated forecasts
-- **inventory_transactions** - Stock movement history
-- **sync_log** - System synchronization logs
-
-## Machine Learning
-
-The system uses **Meta's Prophet** for demand forecasting:
-
-- **Historical Analysis**: Analyzes past 60 days of order data
-- **Seasonal Patterns**: Detects weekly and daily seasonality
-- **External Factors**: Considers day of week, month, and weekend effects
-- **Confidence Intervals**: Provides prediction confidence scores
-- **Multi-period Forecasting**: Generates predictions for morning, afternoon, and evening
-
-### Prediction Factors
-- Historical order patterns
-- Day of week effects
-- Seasonal trends
-- Weekend vs weekday differences
-- Recent demand changes
-
-## Development
-
-### Project Structure
-\`\`\`
-restaurant-management-system/
-├── app/                    # Next.js app directory
-├── components/             # React components
-├── lib/                   # Utilities and stores
-├── backend/               # FastAPI backend
-│   ├── main.py           # FastAPI app
-│   ├── database.py       # Database operations
-│   ├── models.py         # Pydantic models
-│   ├── ml_predictions.py # Prophet ML engine
-│   └── sync_service.py   # Auto-sync service
-└── README.md
-\`\`\`
-
-### Adding New Features
-
-1. **Backend**: Add endpoints in `main.py`, update database schema in `database.py`
-2. **Frontend**: Create components, update API calls in `lib/api.ts`
-3. **ML**: Extend prediction logic in `ml_predictions.py`
-
-### Environment Variables
-
-Create `.env.local` for frontend:
-\`\`\`env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-\`\`\`
-
-## Deployment
-
-### Backend Deployment
-1. Set up Python environment on server
-2. Install dependencies: `pip install -r requirements.txt`
-3. Configure database path and environment variables
-4. Run with production ASGI server: `gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app`
-
-### Frontend Deployment
-1. Build the application: `npm run build`
-2. Deploy to Vercel, Netlify, or any hosting platform
-3. Set environment variables for API URL
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Backend won't start**
-   - Check Python version (3.8+ required)
-   - Ensure virtual environment is activated
-   - Install Prophet dependencies: `pip install prophet`
-
-2. **Frontend API errors**
-   - Verify backend is running on port 8000
-   - Check CORS settings in FastAPI
-   - Confirm API_BASE_URL in frontend
-
-3. **Prophet installation issues**
-   - Install with conda: `conda install -c conda-forge prophet`
-   - Or use pip with dependencies: `pip install prophet`
-
-4. **Database errors**
-   - Check SQLite file permissions
-   - Ensure database directory exists
-   - Run database initialization script
-
-### Performance Tips
-
-- Enable gzip compression for API responses
-- Use database indexing for large datasets
-- Implement Redis caching for frequently accessed data
-- Monitor Prophet model training performance
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## License
-
-This project is licensed under the MIT License.
-
-## Support
-
-For support and questions:
-- Create an issue on GitHub
-- Check the troubleshooting section
-- Review API documentation at `http://localhost:8000/docs`
+# RestaurantOS
+
+> Restaurant management with inventory intelligence and preparation planning.
+
+RestaurantOS turns every sale into an accurate ingredient forecast, a
+preparation plan, a purchasing recommendation, and a waste report.
+
+The current code is **Phase 0** of a four-phase rebuild — see
+[../PHASES.md](../PHASES.md) for the full plan. Phase 0 makes the system
+_truthful_: backend is the source of truth, the browser talks to it
+through a real API, no fake numbers, no fake sync success.
+
+---
+
+## Stack
+
+- **Frontend:** Next.js 15 (App Router) + React 19 + TypeScript + Tailwind + shadcn/ui
+  - State: TanStack Query (server data) + Zustand (cart/UI only)
+- **Backend:** FastAPI + SQLite (dev) / PostgreSQL (prod)
+  - Forecasting: Prophet (lazy-loaded; the API boots without it)
+  - Background work: a separate `worker.py` process
+
+## Prerequisites
+
+- Node.js 20+
+- Python 3.10+ (3.11 recommended; tested on 3.12)
+- npm 10+
+
+## Quick start
+
+```bash
+# 1. Frontend deps
+npm install --legacy-peer-deps
+
+# 2. Backend deps (creates .venv if missing)
+cd backend
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS / Linux:
+source .venv/bin/activate
+pip install -r requirements.txt
+# Optional: enable Prophet-based predictions
+# pip install -r requirements-ml.txt
+# Test deps:
+pip install -r requirements-dev.txt
+cd ..
+
+# 3. Run the two processes
+# Terminal 1 — backend on http://localhost:8000
+cd backend
+python run.py
+
+# Terminal 2 — frontend on http://localhost:3000
+cd ..
+npm run dev
+
+# Terminal 3 (optional) — background worker
+cd backend
+python worker.py
+```
+
+Open http://localhost:3000 in your browser. The Dashboard shows "—"
+until the first order lands; that is intentional.
+
+## Environment variables
+
+Copy `.env.example` to `.env.local` in `restaurant-management-system/`.
+
+| Variable                             | Default                                       | Notes                                                                                                                                                 |
+| ------------------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_API_URL`                | `http://localhost:8000`                       | Base URL of the FastAPI backend. The frontend calls `${API_URL}/api/...`. **Do not** set this to `http://localhost:3000` (that is the frontend port). |
+| `NEXT_PUBLIC_DEMO_MODE`              | `false`                                       | When `true`, the UI shows a persistent "demo restaurant" banner. The backend also exposes `POST /api/demo/seed` (see `backend/core/__init__.py`).     |
+| `RESTAURANT_DB_PATH`                 | `restaurant.db`                               | Backend SQLite file path.                                                                                                                             |
+| `RESTAURANT_TAX_RATE`                | `0.0`                                         | Default tax rate (fraction, e.g. `0.05` for 5%). Applied server-side.                                                                                 |
+| `RESTAURANT_REQUIRE_IDEMPOTENCY_KEY` | `true`                                        | If true, `POST /api/orders` requires an `Idempotency-Key` header.                                                                                     |
+| `CORS_ALLOW_ORIGINS`                 | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated list of allowed origins.                                                                                                              |
+
+## Available scripts
+
+### Frontend (`restaurant-management-system/`)
+
+| Command                | Purpose                                                 |
+| ---------------------- | ------------------------------------------------------- |
+| `npm run dev`          | Start the Next.js dev server.                           |
+| `npm run build`        | Production build. Fails on TypeScript or ESLint errors. |
+| `npm run start`        | Run the production build.                               |
+| `npm run typecheck`    | `tsc --noEmit` — fails on any type error.               |
+| `npm run lint`         | `next lint` — fails on any lint error.                  |
+| `npm run test`         | Run Vitest unit tests.                                  |
+| `npm run format:check` | Verify Prettier formatting.                             |
+| `npm run format`       | Apply Prettier formatting.                              |
+
+### Backend (`backend/`)
+
+| Command                               | Purpose                                                            |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `python run.py`                       | Start the API (uvicorn with reload).                               |
+| `python worker.py`                    | Start the background worker (heartbeat only in Phase 0).           |
+| `python worker.py --once`             | Run a single tick and exit (smoke test).                           |
+| `pytest -q`                           | Run the test suite.                                                |
+| `pip install -r requirements.txt`     | Runtime deps.                                                      |
+| `pip install -r requirements-ml.txt`  | Add Prophet + pandas + numpy (heavy; only needed for predictions). |
+| `pip install -r requirements-dev.txt` | Add pytest + httpx for local testing.                              |
+
+## End-to-end smoke test
+
+```bash
+# In one terminal:
+cd backend && python run.py
+
+# In another:
+bash scripts/e2e-smoke.sh   # macOS / Linux
+# or on Windows:
+node scripts/e2e-smoke.cjs
+```
+
+The script creates a dish, an ingredient, places an order with an
+`Idempotency-Key`, and verifies the server-side total matches the
+authoritative dish price.
+
+## Phase 0 contract — what is and isn't built
+
+**Built and verified:**
+
+- All dishes, ingredients, and orders flow through the FastAPI backend
+- The browser is a thin client (TanStack Query); no localStorage-as-DB
+- Server-side price, tax, and total calculation (client values are ignored)
+- Idempotency-Key on order creation; duplicates return the original order
+- `POST /api/orders` defaults to status `pending` (was `completed`)
+- `update_ingredient_quantity` records the **delta** in the ledger
+- Backend error handling preserves HTTP status codes (no more 404 → 500)
+- `/api/health` actually checks the database
+- `app/api/sync` (Next.js) returns 503 when the backend is unreachable
+- DEMO_MODE banner and stub `POST /api/demo/seed` endpoint
+- 28 tests across backend + frontend
+- `next.config.mjs` has `ignoreBuildErrors` / `ignoreDuringBuilds` removed
+
+**Intentionally not built in Phase 0:**
+
+- Analytics page (the backend endpoint exists; the UI is a "no data" empty state)
+- Reports / Predictions / Kitchen / Settings (removed from sidebar)
+- Order state machine beyond `pending` (Phase 1)
+- Inventory ledger beyond consumption + manual adjustment (Phase 1)
+- Multi-tenant, supplier, payments, audit (Phase 3)
+
+## Why does this matter?
+
+The previous build looked alive on the dashboard but lied about
+everything. A "revenue" number generated from random samples, a "low
+stock" count that disagreed with the inventory page, a sync that
+returned `200 ok` while the backend was off. Operators learned to
+ignore the UI.
+
+Phase 0 fixes that. Every number is real, every failure is visible, and
+every screen agrees with every other screen.

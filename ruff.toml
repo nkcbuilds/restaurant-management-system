@@ -1,0 +1,37 @@
+# Ruff configuration for the RestaurantOS backend.
+# Install: pip install ruff
+# Run:     ruff check backend/
+# Format:  ruff format backend/
+
+target-version = "py310"
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "__pycache__",
+    "tests/fixtures",
+]
+
+[lint]
+# Start with a small, sensible set. Add rules as the codebase stabilises.
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (auto-fixable)
+    "B",   # bugbear (common bugs)
+    "UP",  # pyupgrade (modern Python syntax)
+]
+ignore = [
+    "E501",   # line length — handled by formatter
+    "B008",   # function calls in defaults — FastAPI uses them everywhere
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["B"]  # tests are allowed to do unusual things
+
+[format]
+quote-style = "double"
+indent-style = "space"

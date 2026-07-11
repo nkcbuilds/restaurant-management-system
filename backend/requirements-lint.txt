@@ -1,0 +1,4 @@
+# Linting dependencies (optional, not required at runtime or for tests).
+# Install: pip install -r requirements-lint.txt
+# Run:     ruff check .
+ruff==0.6.9
