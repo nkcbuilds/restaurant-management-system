@@ -5,10 +5,9 @@
 RestaurantOS turns every sale into an accurate ingredient forecast, a
 preparation plan, a purchasing recommendation, and a waste report.
 
-The current code is **Phase 0** of a four-phase rebuild — see
-[../PHASES.md](../PHASES.md) for the full plan. Phase 0 makes the system
-_truthful_: backend is the source of truth, the browser talks to it
-through a real API, no fake numbers, no fake sync success.
+Phases 0–3 of the rebuild are complete — see
+[../PHASES.md](../PHASES.md) for the full plan and per-phase evidence.
+The system is server-driven, testable, and Phase 3 production-scaffolded.
 
 ---
 
@@ -17,16 +16,42 @@ through a real API, no fake numbers, no fake sync success.
 - **Frontend:** Next.js 15 (App Router) + React 19 + TypeScript + Tailwind + shadcn/ui
   - State: TanStack Query (server data) + Zustand (cart/UI only)
 - **Backend:** FastAPI + SQLite (dev) / PostgreSQL (prod)
-  - Forecasting: Prophet (lazy-loaded; the API boots without it)
+  - Forecasting: 3 named baselines + Prophet (lazy-loaded; API boots without it)
   - Background work: a separate `worker.py` process
+- **Tests:** 84 backend (pytest) + 25 frontend (vitest) + 9 e2e (node)
+- **CI:** GitHub Actions + a Makefile mirror of the same gates
 
 ## Prerequisites
 
 - Node.js 20+
 - Python 3.10+ (3.11 recommended; tested on 3.12)
 - npm 10+
+- GNU make (or `make` from MSYS2 / Git Bash on Windows). No `make`? Use `scripts\bootstrap.ps1` instead.
 
 ## Quick start
+
+```bash
+git clone <repo>
+cd restaurant-management-system
+
+make setup     # installs frontend + backend deps (creates backend/.venv)
+make test      # runs every quality gate
+make dev       # starts backend (8000) + frontend (3000) in parallel
+```
+
+Open http://localhost:3000 in your browser. The Dashboard shows `—`
+until the first order lands; that is intentional.
+
+On Windows without `make`:
+
+```powershell
+.\scripts\bootstrap.ps1     # one-time install
+.\scripts\test.ps1         # run every quality gate
+npm run dev                 # frontend (separate terminal)
+.\backend\.venv\Scripts\python.exe backend\run.py   # backend
+```
+
+### Manual fallback (no `make`)
 
 ```bash
 # 1. Frontend deps
@@ -35,33 +60,20 @@ npm install --legacy-peer-deps
 # 2. Backend deps (creates .venv if missing)
 cd backend
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS / Linux:
-source .venv/bin/activate
-pip install -r requirements.txt
-# Optional: enable Prophet-based predictions
-# pip install -r requirements-ml.txt
-# Test deps:
+source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
 cd ..
 
 # 3. Run the two processes
 # Terminal 1 — backend on http://localhost:8000
-cd backend
-python run.py
+cd backend && python run.py
 
 # Terminal 2 — frontend on http://localhost:3000
-cd ..
-npm run dev
+cd .. && npm run dev
 
 # Terminal 3 (optional) — background worker
-cd backend
-python worker.py
+cd backend && python worker.py
 ```
-
-Open http://localhost:3000 in your browser. The Dashboard shows "—"
-until the first order lands; that is intentional.
 
 ## Environment variables
 
@@ -78,6 +90,27 @@ Copy `.env.example` to `.env.local` in `restaurant-management-system/`.
 
 ## Available scripts
 
+### `make` shortcuts (preferred on POSIX or Git Bash)
+
+Run `make help` to see every target. The common ones:
+
+| Command         | What it does                                                   |
+| --------------- | -------------------------------------------------------------- |
+| `make help`     | List every available target with descriptions.                 |
+| `make setup`    | Install frontend + backend deps (idempotent; creates `.venv`). |
+| `make test`     | Run typecheck, lint, format:check, vitest, pytest.             |
+| `make e2e`      | Boot backend, run the 9-step e2e smoke, tear down.             |
+| `make build`    | Production build of the frontend.                              |
+| `make dev`      | Run backend + frontend together (Ctrl-C stops both).           |
+| `make backend`  | Run only the FastAPI backend on :8000.                         |
+| `make frontend` | Run only the Next.js dev server on :3000.                      |
+| `make worker`   | Run the background worker process.                             |
+| `make stop`     | Kill any leftover uvicorn / next dev processes.                |
+| `make lint`     | Run every linter (next lint + ruff).                           |
+| `make format`   | Auto-format frontend (prettier) and backend (ruff).            |
+| `make ci`       | What `.github/workflows/ci.yml` runs, but locally.             |
+| `make clean`    | Remove build artifacts, caches, dev DB.                        |
+
 ### Frontend (`restaurant-management-system/`)
 
 | Command                | Purpose                                                 |
@@ -87,31 +120,37 @@ Copy `.env.example` to `.env.local` in `restaurant-management-system/`.
 | `npm run start`        | Run the production build.                               |
 | `npm run typecheck`    | `tsc --noEmit` — fails on any type error.               |
 | `npm run lint`         | `next lint` — fails on any lint error.                  |
-| `npm run test`         | Run Vitest unit tests.                                  |
+| `npm test`             | Run Vitest unit tests.                                  |
 | `npm run format:check` | Verify Prettier formatting.                             |
 | `npm run format`       | Apply Prettier formatting.                              |
 
 ### Backend (`backend/`)
 
-| Command                               | Purpose                                                            |
-| ------------------------------------- | ------------------------------------------------------------------ |
-| `python run.py`                       | Start the API (uvicorn with reload).                               |
-| `python worker.py`                    | Start the background worker (heartbeat only in Phase 0).           |
-| `python worker.py --once`             | Run a single tick and exit (smoke test).                           |
-| `pytest -q`                           | Run the test suite.                                                |
-| `pip install -r requirements.txt`     | Runtime deps.                                                      |
-| `pip install -r requirements-ml.txt`  | Add Prophet + pandas + numpy (heavy; only needed for predictions). |
-| `pip install -r requirements-dev.txt` | Add pytest + httpx for local testing.                              |
+| Command                                | Purpose                                                            |
+| -------------------------------------- | ------------------------------------------------------------------ |
+| `python run.py`                        | Start the API (uvicorn with reload).                               |
+| `python worker.py`                     | Start the background worker (heartbeat only in Phase 0).           |
+| `python worker.py --once`              | Run a single tick and exit (smoke test).                           |
+| `pytest -q`                            | Run the test suite.                                                |
+| `ruff check .` / `ruff format .`       | Lint / format the backend (optional dep).                          |
+| `pip install -r requirements.txt`      | Runtime deps.                                                      |
+| `pip install -r requirements-ml.txt`   | Add Prophet + pandas + numpy (heavy; only needed for predictions). |
+| `pip install -r requirements-dev.txt`  | Add pytest + httpx for local testing.                              |
+| `pip install -r requirements-lint.txt` | Add ruff for local linting.                                        |
 
 ## End-to-end smoke test
 
-```bash
-# In one terminal:
-cd backend && python run.py
+The smoke test boots the backend, runs a 9-step integration check
+(dish/ingredient/order creation, server-priced totals, idempotency,
+stock-overflow rejection), and tears the backend down.
 
-# In another:
-bash scripts/e2e-smoke.sh   # macOS / Linux
-# or on Windows:
+```bash
+make e2e                             # POSIX / Git Bash
+# or, without make:
+bash scripts/e2e.sh                  # POSIX
+powershell -File scripts/e2e.ps1     # Windows PowerShell
+
+# Or against an already-running backend:
 node scripts/e2e-smoke.cjs
 ```
 
@@ -119,38 +158,56 @@ The script creates a dish, an ingredient, places an order with an
 `Idempotency-Key`, and verifies the server-side total matches the
 authoritative dish price.
 
-## Phase 0 contract — what is and isn't built
+## What's built (Phases 0–3)
 
-**Built and verified:**
+**Phase 0 — system is truthful**
 
 - All dishes, ingredients, and orders flow through the FastAPI backend
 - The browser is a thin client (TanStack Query); no localStorage-as-DB
 - Server-side price, tax, and total calculation (client values are ignored)
-- Idempotency-Key on order creation; duplicates return the original order
-- `POST /api/orders` defaults to status `pending` (was `completed`)
+- Idempotency-Key on order creation; duplicates return 200 with the original order
+- `/api/health` actually checks the database and returns 503 on outage
+- `app/api/sync` (Next.js) returns 503 when the backend is unreachable
 - `update_ingredient_quantity` records the **delta** in the ledger
 - Backend error handling preserves HTTP status codes (no more 404 → 500)
-- `/api/health` actually checks the database
-- `app/api/sync` (Next.js) returns 503 when the backend is unreachable
-- DEMO_MODE banner and stub `POST /api/demo/seed` endpoint
-- 28 tests across backend + frontend
 - `next.config.mjs` has `ignoreBuildErrors` / `ignoreDuringBuilds` removed
+- DEMO_MODE banner and stub `POST /api/demo/seed` endpoint
 
-**Intentionally not built in Phase 0:**
+**Phase 1 — real operational loop**
 
-- Analytics page (the backend endpoint exists; the UI is a "no data" empty state)
-- Reports / Predictions / Kitchen / Settings (removed from sidebar)
-- Order state machine beyond `pending` (Phase 1)
-- Inventory ledger beyond consumption + manual adjustment (Phase 1)
-- Multi-tenant, supplier, payments, audit (Phase 3)
+- Full 8-state order lifecycle (`draft → submitted → accepted → preparing → ready → served → completed` + `cancelled`) with server-enforced transitions
+- Kitchen tickets page that auto-refreshes every 10s
+- Waste, stock-count, and variance-report endpoints
+- `X-User-Role` header RBAC: `cashier < kitchen < inventory < manager < owner`
 
-## Why does this matter?
+**Phase 2 — trustworthy forecasting**
 
-The previous build looked alive on the dashboard but lied about
-everything. A "revenue" number generated from random samples, a "low
-stock" count that disagreed with the inventory page, a sync that
-returned `200 ok` while the backend was off. Operators learned to
-ignore the UI.
+- 3 named baselines (`same-weekday`, `moving-average`, `recent-weighted`)
+- Backtester that walks history forward and reports MAE / WAPE / bias / stockout-rate / waste per (dish, period)
+- Predictions carry `model_used`, `model_confidence`, `data_sufficiency`, low/high range, and a human-readable reason
+- `GET /api/prep-plan` and `GET /api/purchase-recommendations`
 
-Phase 0 fixes that. Every number is real, every failure is visible, and
-every screen agrees with every other screen.
+**Phase 3 — commercial readiness scaffolding**
+
+- Suppliers + Purchase Orders (weighted-average cost on receive)
+- Payments with idempotency and split-tender support
+- Offline POS outbox with auto-flush on browser `online` event
+- Audit log + minimal Prometheus `/metrics`
+
+**Tests + CI**
+
+- 84 backend tests (pytest) + 25 frontend tests (vitest) + 9 e2e checks
+- GitHub Actions matrix (Node 20, Python 3.10/3.11/3.12)
+- A Makefile that mirrors every CI gate locally
+
+**Intentionally not built (Phase 4+):**
+
+- Multi-tenant `restaurant_id` on every operational table
+- Real payment-provider webhooks (Razorpay / Stripe)
+- Discount codes + order modifiers
+- Service worker + IndexedDB outbox (localStorage fallback works today)
+- Alembic for proper migrations (in-place `_ensure_column` is Phase 0–3)
+- PostgreSQL + `pg_dump` cron
+- Tables / floor plans for sit-down restaurants
+- Generated TypeScript client from FastAPI's OpenAPI schema
+- Structured JSON logging + Sentry integration

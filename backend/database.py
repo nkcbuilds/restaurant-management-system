@@ -1706,29 +1706,22 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def list_purchase_orders(
-        self, supplier_id: str | None = None
-    ) -> list[dict[str, Any]]:
+    def list_purchase_orders(self, supplier_id: str | None = None) -> list[dict[str, Any]]:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             if supplier_id:
                 cursor.execute(
-                    "SELECT * FROM purchase_orders WHERE supplier_id = ?"
-                    " ORDER BY created_at DESC",
+                    "SELECT * FROM purchase_orders WHERE supplier_id = ? ORDER BY created_at DESC",
                     (supplier_id,),
                 )
             else:
-                cursor.execute(
-                    "SELECT * FROM purchase_orders ORDER BY created_at DESC"
-                )
+                cursor.execute("SELECT * FROM purchase_orders ORDER BY created_at DESC")
             return [dict(r) for r in cursor.fetchall()]
         finally:
             conn.close()
 
-    def receive_purchase_order(
-        self, po_id: str, actor: str | None = None
-    ) -> dict[str, Any]:
+    def receive_purchase_order(self, po_id: str, actor: str | None = None) -> dict[str, Any]:
         """Mark a PO as received and write `purchase` ledger entries.
 
         Updates `ingredients.cost_per_unit` to a quantity-weighted
@@ -1766,9 +1759,7 @@ class DatabaseManager:
                 old_cost = float(row["cost_per_unit"] or 0)
                 new_qty = old_qty + qty
                 new_cost = (
-                    (old_cost * old_qty + unit_cost * qty) / new_qty
-                    if new_qty > 0
-                    else unit_cost
+                    (old_cost * old_qty + unit_cost * qty) / new_qty if new_qty > 0 else unit_cost
                 )
                 cursor.execute(
                     """
@@ -1889,9 +1880,7 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute(
-                "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)
-            )
+            cursor.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,))
             rows = [dict(r) for r in cursor.fetchall()]
             for r in rows:
                 if r.get("payload"):
@@ -1902,4 +1891,3 @@ class DatabaseManager:
             return rows
         finally:
             conn.close()
-

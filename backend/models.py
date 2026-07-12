@@ -380,6 +380,7 @@ class OfflineOrder(BaseModel):
     tags it with a client-side `captured_at` so duplicates can be
     detected on replay.
     """
+
     idempotency_key: str
     captured_at: str
     items: list[OrderItem]
