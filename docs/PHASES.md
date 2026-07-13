@@ -61,7 +61,9 @@ failure would not block shipping.
 - `/api/predictions` never 503s without Prophet (baselines always run)
 - Backend error handler preserves `HTTPException`; logs unexpected
   with traceback + `error_id`
-- GitHub Actions CI runs every gate
+- ~~GitHub Actions CI runs every gate~~ — _CI was added in a later
+  commit and removed in the docs-overhaul pass. The Makefile is the
+  source of truth._
 - Ruff config + `requirements-lint.txt`
 - `.gitignore` excludes `venv/`, `__pycache__/`, `*.db`, etc.
 - 11,800 venv paths untracked from git index
@@ -206,7 +208,9 @@ That criterion was deferred to "Phase 4". It is **now closed**:
 - `scripts/e2e.sh` / `scripts/e2e.ps1` — boot the backend, run the
   smoke, tear it down. The PowerShell version probes `127.0.0.1` to
   avoid PowerShell's IPv6-vs-uvicorn IPv4 timeout.
-- `backend/run.py --no-reload` — single-process mode for CI / tests;
+- `backend/run.py --no-reload` — single-process mode (recommended
+  for `make e2e` and any other scripted invocation that touches the
+  DB file);
   uvicorn's auto-reloader cannot restart mid-request.
 
 ---
@@ -248,8 +252,9 @@ actually doing":
    legal ones succeed; the client can't lie.
 3. **`_ensure_column` migrations and idempotency keys.** Every
    schema change and every retry is safe by construction.
-4. **CI on every PR.** The repo doesn't ship a build that wouldn't
-   run on a fresh clone.
+4. **`make test && make e2e` on a fresh clone.** The repo doesn't ship
+   a build that wouldn't run on a clean checkout. _(CI was tried and
+   removed — see the "Tooling follow-ups" section for the rationale.)_
 
 The order mattered: every Phase N+1 fix relied on Phase N's
 foundation. Trying to add offline-mode on top of `Math.random()`

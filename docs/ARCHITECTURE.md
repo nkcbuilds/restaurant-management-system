@@ -354,10 +354,10 @@ Browser /predictions
 | Backend types | mypy / Pydantic    | implicit via Pydantic v2                        | runtime                        |
 | Tests         | pytest, vitest     | —                                               | `backend/tests/`, `__tests__/` |
 | E2E           | Node script + curl | `scripts/e2e-smoke.cjs`, `scripts/e2e.{sh,ps1}` | `scripts/`                     |
-| CI            | GitHub Actions     | Node 20, Python 3.10/3.11/3.12 matrix           | `.github/workflows/ci.yml`     |
 
-`make test` and `make e2e` run the same gates locally. The CI matrix
-runs them in parallel on every PR.
+`make test` and `make e2e` run the same gates locally. There is no CI
+workflow checked in — the Makefile is the source of truth. See the
+README's "About CI" section for the rationale.
 
 ---
 

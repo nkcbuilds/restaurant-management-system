@@ -39,7 +39,9 @@ This is what the Makefile already does, so the warning is benign.
 ### `pip install -r requirements-dev.txt` fails: "Python >= 3.10 required"
 
 We require Python 3.10+. `python --version` should show 3.10, 3.11, or
-3.12. The CI matrix runs against all three.
+3.12. (The CI workflow that ran against all three was removed — see the
+README's "About CI" section. The Makefile is the source of truth
+now.)
 
 ---
 
@@ -119,10 +121,12 @@ Or use the Makefile: `make test` (handles the cd for you).
 
 ### A test passes locally but fails in CI
 
-The most common cause: the test used a shared resource (the dev DB,
-a port, the working directory). All backend tests should use the
-`db` or `temp_db_path` fixture from `conftest.py`. Both guarantee a
-fresh SQLite in `tmp_path` per test.
+This project does not have a CI workflow. If you add one (see the
+README's "About CI" section), the most common cause of a local-vs-CI
+discrepancy is a test that used a shared resource (the dev DB, a
+port, the working directory). All backend tests should use the `db`
+or `temp_db_path` fixture from `conftest.py`. Both guarantee a fresh
+SQLite in `tmp_path` per test.
 
 If a test imports `database` directly, it picks up the dev DB. Don't
 do that.

@@ -18,8 +18,8 @@ always see the same data because the backend is the single source of truth.
 - **Forecasting:** 3 named baselines + Prophet (lazy-loaded; API boots without it)
 - **Background work:** a separate `worker.py` process
 - **Tests:** 84 backend (pytest) + 25 frontend (vitest) + 9-step e2e smoke
-- **Quality gates:** TypeScript strict + ESLint + Ruff + Prettier; all enforced in CI
-- **Reproducible:** `make setup && make test` works from a fresh clone
+- **Quality gates:** TypeScript strict + ESLint + Ruff + Prettier; all run by `make test`
+- **Reproducible:** `make setup && make test && make e2e` works from a fresh clone (no external CI required)
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the system design, and
 [`docs/PHASES.md`](docs/PHASES.md) for the rebuild history.
@@ -41,6 +41,15 @@ make dev       # starts backend (8000) + frontend (3000) in parallel
 
 Open http://localhost:3000 in your browser. The Dashboard shows `—` until
 the first order lands; that is intentional.
+
+### About CI
+
+This project does **not** have a GitHub Actions workflow. The `Makefile`
+is the single source of truth: `make test && make e2e` on a fresh clone
+is the same set of gates that any CI would run. To add CI later (e.g.
+if you open-source the project and want PRs gated), add a thin
+workflow at `.github/workflows/ci.yml` that calls `make ci` — the
+Makefile already exposes that target.
 
 ### Without `make` (Windows PowerShell)
 
@@ -129,7 +138,7 @@ Run `make help` to see every target. The most useful ones:
 | `make stop`     | Kill any leftover uvicorn / next dev processes.                |
 | `make lint`     | Run every linter (next lint + ruff).                           |
 | `make format`   | Auto-format frontend (prettier) and backend (ruff).            |
-| `make ci`       | What `.github/workflows/ci.yml` runs, but locally.             |
+| `make ci`       | Run every quality gate (typecheck, lint, format, tests, e2e).  |
 | `make clean`    | Remove build artifacts, caches, dev DB.                        |
 
 ### `npm` (frontend)

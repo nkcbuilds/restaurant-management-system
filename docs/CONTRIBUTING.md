@@ -211,10 +211,12 @@ The dashboard reads `/api/sync/health`. Check, in order:
 
 ### A test passes locally but fails in CI
 
-The most common cause: the test relied on a shared resource (a file
-in `backend/`, a process on a port, the working directory). All tests
-in `backend/tests/` should use the `db` or `temp_db_path` fixture
-which guarantees isolation. If yours doesn't, fix it.
+This project does not have a CI workflow. If you add one (see the
+README's "About CI" section), the most common cause of a local-vs-CI
+discrepancy is a test that relies on a shared resource (a file in
+`backend/`, a process on a port, the working directory). All tests in
+`backend/tests/` should use the `db` or `temp_db_path` fixture which
+guarantees isolation. If yours doesn't, fix it.
 
 ### A backend endpoint returns 500 with `error_id`
 

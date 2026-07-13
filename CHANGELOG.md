@@ -48,8 +48,9 @@ All notable changes to RestaurantOS are recorded here. Dates are in
 - **`scripts/e2e.sh`** / **`scripts/e2e.ps1`** — boot the backend,
   run the 9-step smoke, tear it down. The PowerShell version probes
   `127.0.0.1` to avoid PowerShell's IPv6-vs-uvicorn IPv4 timeout.
-- **`backend/run.py --no-reload`** — single-process mode for CI /
-  tests. Dev mode (no flag) keeps hot reload.
+- **`backend/run.py --no-reload`** — single-process mode (recommended
+  for `make e2e` and any other scripted invocation that touches the
+  DB file). Dev mode (no flag) keeps hot reload.
 
 ---
 
@@ -112,8 +113,11 @@ owner`.
 
 ### CI
 
-- GitHub Actions matrix (Node 20, Python 3.10 / 3.11 / 3.12).
-- `make ci` mirrors the CI gates locally.
+- ~~GitHub Actions matrix (Node 20, Python 3.10 / 3.11 / 3.12).~~ —
+  _CI was removed in a later pass._
+- ~~`make ci` mirrors the CI gates locally.~~ — _CI was removed in a
+  later pass. `make ci` is still available; the Makefile is the
+  source of truth._
 
 ---
 
