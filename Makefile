@@ -69,6 +69,7 @@ ifeq ($(OS),Windows_NT)
 else
 	$(VENV_PY) -m pip install --upgrade pip
 	$(VENV_PY) -m pip install -r $(BACKEND_DIR)/requirements-dev.txt
+	$(VENV_PY) -m pip install -r $(BACKEND_DIR)/requirements-lint.txt
 endif
 	@echo
 	@echo "Setup complete. Next:"
