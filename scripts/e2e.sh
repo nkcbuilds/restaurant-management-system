@@ -88,4 +88,9 @@ if [ "$UP" -ne 1 ]; then
 fi
 
 echo "==> Running e2e smoke"
-API_URL="$API_URL" node scripts/e2e-smoke.cjs
+if ! API_URL="$API_URL" node scripts/e2e-smoke.cjs; then
+  echo "Error: e2e smoke failed" >&2
+  echo "---- backend log ----" >&2
+  cat "$LOG" >&2
+  exit 1
+fi

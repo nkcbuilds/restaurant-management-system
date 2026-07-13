@@ -75,7 +75,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: requirements-dev.txt
+          cache-dependency-path: backend/requirements-dev.txt
 
       - name: Install backend + lint deps
         run: |
