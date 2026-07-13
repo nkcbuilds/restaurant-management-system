@@ -691,6 +691,10 @@ class DatabaseManager:
                 if existing:
                     return existing["id"]
 
+            # Validate the basket is non-empty BEFORE touching the DB.
+            if not order_data.get("items"):
+                raise ValueError("Order must contain at least one item")
+
             # Look up authoritative dish prices.
             dish_ids = list({item["dish_id"] for item in order_data["items"]})
             placeholders = ",".join("?" for _ in dish_ids)

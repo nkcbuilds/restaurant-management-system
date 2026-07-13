@@ -93,3 +93,17 @@ def test_inactive_dish_rejected(db):
             },
             tax_rate=0.0,
         )
+
+
+def test_empty_order_rejected(db):
+    """An order with no items is meaningless. The DB should refuse it,
+    not silently create a $0 order."""
+    with pytest.raises(ValueError, match="at least one item"):
+        db.create_order(
+            {
+                "items": [],
+                "payment_method": "cash",
+                "cashier_id": "tester",
+            },
+            tax_rate=0.0,
+        )

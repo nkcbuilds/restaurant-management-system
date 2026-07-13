@@ -166,7 +166,7 @@ customer could run.
 
 **Validation:** All Phase 0–2 tests green. Live e2e (supplier → PO →
 receive → order → payment → audit → metrics → offline replay →
-idempotency dedup) produces the expected results. 84 backend + 25
+idempotency dedup) produces the expected results. 85 backend + 25
 frontend tests.
 
 **Commit:** `9f691f6`
@@ -177,11 +177,11 @@ frontend tests.
 
 ```
 [1/9] make help              -> help table renders
-[2/9] make test              -> 25 frontend + 84 backend tests green
+[2/9] make test              -> 25 frontend + 85 backend tests green
 [3/9] make lint              -> ESLint + ruff clean
 [4/9] make build             -> production build green
 [5/9] make e2e x10           -> 10 consecutive PASS
-[6/9] pytest -q              -> 84 passed
+[6/9] pytest -q              -> 85 passed
 [7/9] ruff check             -> All checks passed!
 [8/9] ruff format check      -> 29 files already formatted
 [9/9] worker --once          -> exits 0

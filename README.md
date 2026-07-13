@@ -17,7 +17,7 @@ always see the same data because the backend is the single source of truth.
 - **Backend:** FastAPI + SQLite (dev) / PostgreSQL (prod)
 - **Forecasting:** 3 named baselines + Prophet (lazy-loaded; API boots without it)
 - **Background work:** a separate `worker.py` process
-- **Tests:** 84 backend (pytest) + 25 frontend (vitest) + 9-step e2e smoke
+- **Tests:** 85 backend (pytest) + 25 frontend (vitest) + 9-step e2e smoke
 - **Quality gates:** TypeScript strict + ESLint + Ruff + Prettier; all run by `make test`
 - **Reproducible:** `make setup && make test && make e2e` works from a fresh clone (no external CI required)
 

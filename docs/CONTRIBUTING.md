@@ -45,8 +45,8 @@ you from arguing with the wrong invariants.
 
 4. **Write the test before the code.** A failing test that describes
    the desired behaviour, then the code that makes it pass. The
-   backend has 84 tests; the frontend has 25. The CI gate won't
-   merge without them.
+   backend has 85 tests; the frontend has 25. `make test` won't pass
+   without them.
 
 5. **Run `make lint && make test && make e2e` locally before pushing.**
    `make e2e` boots the backend, runs the 9-step smoke, tears down.

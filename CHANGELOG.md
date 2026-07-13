@@ -7,6 +7,13 @@ All notable changes to RestaurantOS are recorded here. Dates are in
 
 ## [Unreleased]
 
+### Fixed
+
+- **`POST /api/orders` with empty `items` array.** Previously this
+  returned 201 and created a $0 order with no line items. Now returns 400. The new test `test_empty_order_rejected` pins the contract.
+
+## [Unreleased (docs)]
+
 ### Added — Documentation overhaul
 
 - **`README.md` rewritten.** Reflects the current state of the project

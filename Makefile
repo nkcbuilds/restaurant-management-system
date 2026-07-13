@@ -173,7 +173,7 @@ stop:                         ## Kill any uvicorn / next dev servers still runni
 
 # ---- CI mirror ---------------------------------------------------------
 
-ci:                           ## Mirror .github/workflows/ci.yml locally
+ci:                           ## Run every quality gate (test + lint + format + e2e)
 	make lint
 	make test
 	make build
