@@ -64,9 +64,9 @@ def test_new_order_starts_submitted_not_completed(db):
         tax_rate=0.0,
     )
     order = db.get_order_by_id(order_id)
-    assert order["status"] == "submitted", (
-        "Phase 1 ships orders in 'submitted' state (kitchen must accept next)"
-    )
+    assert (
+        order["status"] == "submitted"
+    ), "Phase 1 ships orders in 'submitted' state (kitchen must accept next)"
 
 
 def test_unknown_dish_rejected(db):
